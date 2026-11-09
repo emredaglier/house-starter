@@ -3,6 +3,7 @@
 // design tokens, copy and signature effect names, so a copy-paste from daglier.com cannot bring
 // them along. It is a repo guard in the sense of CODING_STANDARDS.md: it enforces a rule, not
 // behaviour. Projects made from the starter keep it.
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -67,10 +68,46 @@ function* walk(dir: string): Generator<string> {
       }
       if (entry.name === 'worktrees' && path.basename(dir) === '.claude') continue
       yield* walk(path.join(dir, entry.name))
-    } else if (!SKIP_FILES.has(entry.name) && !isBinary(entry.name)) {
+    } else {
       yield path.join(dir, entry.name)
     }
   }
+}
+
+/**
+ * The files that belong to the repo: tracked and new-but-not-ignored ones, so build output, logs
+ * and anything else git ignores (which may hold absolute paths of the machine) is not scanned.
+ * Outside a git checkout it walks the folder instead.
+ */
+function repoFiles(): string[] {
+  let files: string[]
+  try {
+    const out = execFileSync(
+      'git',
+      ['ls-files', '-z', '--cached', '--others', '--exclude-standard'],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      },
+    )
+    files = out
+      .split('\0')
+      .filter(Boolean)
+      .map((relative) => path.join(root, relative))
+      .filter((file) => fs.existsSync(file))
+  } catch {
+    files = [...walk(root)]
+  }
+  return files.filter(
+    (file) =>
+      !SKIP_FILES.has(path.basename(file)) &&
+      !isBinary(file) &&
+      !path
+        .relative(root, file)
+        .split(path.sep)
+        .some((part) => SKIP_DIRS.has(part)),
+  )
 }
 
 describe('findBanned', () => {
@@ -105,7 +142,7 @@ describe('findBanned', () => {
 describe('repo guard: no daglier design in the house starter', () => {
   it('finds no daglier token, font, colour, copy or effect name anywhere in the repo', () => {
     const hits: string[] = []
-    for (const file of walk(root)) {
+    for (const file of repoFiles()) {
       const relative = path.relative(root, file)
       if (relative === SELF) continue
       hits.push(...findBanned(relative, fs.readFileSync(file, 'utf8')))
