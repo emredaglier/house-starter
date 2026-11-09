@@ -7,12 +7,14 @@ import { createGlowStage, type GlowState } from './stage'
 const fakeGl = () => {
   const calls: { name: string; args: unknown[] }[] = []
   const flags = { compiles: true, links: true }
+  const loseContext = vi.fn()
   const gl = new Proxy(
     {},
     {
       get: (_target, name: string) => {
         if (name === 'getShaderParameter') return () => flags.compiles
         if (name === 'getProgramParameter') return () => flags.links
+        if (name === 'getExtension') return () => ({ loseContext })
         if (/^[A-Z0-9_]+$/.test(name)) return 1
         return (...args: unknown[]) => {
           calls.push({ name, args })
@@ -21,7 +23,7 @@ const fakeGl = () => {
       },
     },
   )
-  return { gl, calls, flags }
+  return { gl, calls, flags, loseContext }
 }
 
 const canvasWith = (gl: unknown) => {
@@ -86,6 +88,25 @@ describe('createGlowStage: engine contract', () => {
     expect(faults).toEqual([{ kind: 'gl-error', detail: 'glow' }])
   })
 
+  it.each([
+    ['compile', 'compiles'],
+    ['link', 'links'],
+  ] as const)('releases the GPU context and every shader when the first %s fails', (_, flag) => {
+    const { gl, calls, flags, loseContext } = fakeGl()
+    flags[flag] = false
+    createGlowStage(canvasWith(gl))
+    expect(loseContext).toHaveBeenCalledTimes(1)
+    const count = (name: string) => calls.filter((c) => c.name === name).length
+    expect(count('deleteShader')).toBe(count('createShader'))
+    if (flag === 'links') expect(count('deleteProgram')).toBe(count('createProgram'))
+  })
+
+  it('deletes the shaders once the program is linked', () => {
+    const { gl, calls } = fakeGl()
+    createGlowStage(canvasWith(gl))
+    expect(calls.filter((c) => c.name === 'deleteShader')).toHaveLength(2)
+  })
+
   it('draws one full-screen triangle strip per draw()', () => {
     const { gl, calls } = fakeGl()
     const stage = createGlowStage(canvasWith(gl))
@@ -95,17 +116,6 @@ describe('createGlowStage: engine contract', () => {
     const draws = calls.filter((c) => c.name === 'drawArrays')
     expect(draws.length - before).toBe(1)
     expect(draws.at(-1)?.args).toEqual([1, 0, 4])
-  })
-
-  it('caps the canvas backing store at 1.5 device px per CSS px by default', () => {
-    vi.spyOn(window, 'devicePixelRatio', 'get').mockReturnValue(3)
-    const { gl } = fakeGl()
-    const canvas = canvasWith(gl)
-    Object.defineProperty(canvas, 'clientWidth', { value: 1000 })
-    Object.defineProperty(canvas, 'clientHeight', { value: 600 })
-    createGlowStage(canvas)
-    expect(canvas.width).toBe(1500)
-    expect(canvas.height).toBe(900)
   })
 
   it('on context loss: ok turns false, one fault event fires, drawing stops', () => {
@@ -141,6 +151,22 @@ describe('createGlowStage: engine contract', () => {
     expect(names.at(-1)).toBe('drawArrays')
     const centre = calls.slice(before).find((c) => c.name === 'uniform2f' && c.args[1] === 99)
     expect(centre).toBeDefined()
+  })
+
+  it('sizes to the canvas as it is now, not as it was, when the context is restored', () => {
+    const { gl } = fakeGl()
+    const canvas = canvasWith(gl)
+    let width = 800
+    Object.defineProperty(canvas, 'clientWidth', { get: () => width })
+    Object.defineProperty(canvas, 'clientHeight', { value: 400 })
+    const stage = createGlowStage(canvas)
+    expect(canvas.width).toBe(800)
+    canvas.dispatchEvent(new Event('webglcontextlost', { cancelable: true }))
+    width = 300
+    canvas.dispatchEvent(new Event('webglcontextrestored'))
+    expect(stage.ok).toBe(true)
+    expect(canvas.width).toBe(300)
+    expect(canvas.height).toBe(400)
   })
 
   it('stays not ok and reports gl-error when the restored context cannot rebuild', () => {

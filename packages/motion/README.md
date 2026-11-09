@@ -32,7 +32,7 @@ each follows the contract below.
 - `prefersReducedMotion()`, `hasFinePointer()`, `hasWebGL2()`, `supportsViewTransitions()`:
   capability checks.
 - `registerLenis` / `unregisterLenis` / `getActiveLenis` / `stopActiveLenis` / `startActiveLenis`:
-  the active Lenis, so a menu or lightbox can pause it. (`lenis` itself is not a dependency; the
+  the active Lenis, so a menu or modal can pause it. (`lenis` itself is not a dependency; the
   registry only needs `stop` and `start`.)
 - `parseCubicBezier(css)`, `cubicBezierEase(points)`, `readEase('--ease-name')`: a CSS
   cubic-bezier as a GSAP-compatible ease, so CSS and GSAP share one curve. Linear when the

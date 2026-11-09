@@ -25,7 +25,7 @@ function percentile(sorted: number[], p: number): number {
   return sorted[Math.min(sorted.length, Math.max(1, rank)) - 1]!
 }
 
-const round1 = (n: number) => Math.round(n * 10) / 10
+export const round1 = (n: number) => Math.round(n * 10) / 10
 
 export function summarizeFrames(durations: number[]): FrameSummary {
   if (durations.length === 0) return { frames: 0, p50Ms: 0, p95Ms: 0, maxMs: 0, droppedPct: 0 }

@@ -60,8 +60,9 @@ pnpm perf:check --record                        # write a new budget from the la
 
 `pnpm perf` records frame times (p50, p95, worst, share of dropped frames) for each scenario in
 `perf/scenarios.ts` in Chromium at 4x CPU throttle and in WebKit, then samples main-thread CPU and
-`requestAnimationFrame` callbacks per second with no input on the example effect's page, after its
-idle timeout (Chromium). A scenario whose feature is not on the page is skipped with a notice. A
+`requestAnimationFrame` callbacks per second with no input on the page named by `IDLE_PATH` in
+`perf/scenarios.ts` (the example effect's page), after its idle timeout (Chromium). The idle check
+is skipped with a notice when `IDLE_PATH` is `null`. A scenario whose feature is not on the page is skipped with a notice. A
 new effect adds its scenario by editing the registry and putting the element named in `requires`
 on its page. Headless browsers have no GPU, so numbers only mean something against an earlier run
 on the same machine: run `pnpm perf` on the base commit, copy `perf/.output/report.json` aside,
@@ -74,9 +75,17 @@ run it again with the change and compare.
 2. Rename the `@house/*` scope in every `package.json`, import and `transpilePackages` list. Also
    rename the `house:motion-fault` event (`packages/motion/src/fault.ts`), the email adapter's
    `defaultFromName` (`packages/cms-config/src/config.ts`) and the `'Project name'` title in
-   `apps/web/src/app/layout.tsx`. Delete the example effect you do not keep (`packages/motion/src/glow`,
-   `apps/web/src/app/examples`, the `glow-sweep` scenario in `perf/scenarios.ts`), and call
-   `configureIdle` with the project's idle timeouts if it has route-specific ones.
+   `apps/web/src/app/layout.tsx`. Fill in `reportFault` in `apps/web/src/lib/observability.ts`
+   (it only logs now) to send motion faults to the project's error monitor. Call `configureIdle`
+   with the project's idle timeouts if it has route-specific ones.
+   Delete the example effect you do not keep. Every place that names it:
+   - `packages/motion/src/glow` and its `@house/motion/glow` export in `packages/motion/package.json`;
+   - `apps/web/src/app/examples/glow`;
+   - `/examples/glow` in `PUBLIC_ROUTES` in `smoke/smoke.spec.ts`;
+   - the `glow-sweep` scenario and `IDLE_PATH` in `perf/scenarios.ts` (point `IDLE_PATH` at the
+     project's own looping page, or set it to `null` to skip the idle check);
+   - the `glow-sweep` keys in `perf/perf-budget.json` (a test fails while a budget names a missing
+     scenario), then record a new budget with `pnpm perf:check --record`.
 3. Replace `packages/cms-config/src/seed/placeholder.ts`, the Site global and the home page with the
    project's content model.
 4. Fill `packages/ui` with the project's design (tokens, fonts in `packages/ui/fonts.ts`).

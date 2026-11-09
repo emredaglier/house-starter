@@ -1,6 +1,6 @@
 // The report `pnpm perf` writes, the budget `pnpm perf:check` compares it to, and the maths
 // between them. Pure, so it is unit-tested.
-import type { FrameSummary } from './stats.ts'
+import { round1, type FrameSummary } from './stats.ts'
 
 export type FrameResult = ({ status: 'ok' } & FrameSummary) | { status: 'skipped'; reason: string }
 export type IdleResult =
@@ -9,7 +9,7 @@ export type IdleResult =
 
 export type Report = {
   generatedAt: string
-  /** Keyed `<project>/<scenario id>`, e.g. `chromium-4x/curtain`. */
+  /** Keyed `<project>/<scenario id>`, e.g. `chromium-4x/glow-sweep`. */
   frames: Record<string, FrameResult>
   idle: IdleResult
 }
@@ -42,7 +42,6 @@ export function checkBudget(report: Report, budget: Budget): string[] {
 }
 
 const FLOORS = { p95Ms: 50, droppedPct: 5, cpuPct: 5 }
-const round1 = (n: number) => Math.round(n * 10) / 10
 
 /** A budget from a report: every measured number times `headroom`, never below a floor. */
 export function recordBudget(report: Report, headroom: number): Budget {

@@ -1,3 +1,5 @@
+import { setHtmlFlag } from './html-state'
+
 const RESET_EVENTS = ['pointermove', 'pointerdown', 'keydown', 'wheel', 'scroll'] as const
 /** Input fires constantly; resetting the timer 4 times a second is plenty. */
 const THROTTLE_MS = 250
@@ -69,7 +71,7 @@ export const createIdleWatcher = ({ timeoutMs }: IdleOptions): IdleWatcher => {
   const set = (value: boolean) => {
     if (value === idle) return
     idle = value
-    document.documentElement.toggleAttribute('data-saver', value)
+    setHtmlFlag('saver', value)
     subscribers.forEach((fn) => fn(value))
   }
 

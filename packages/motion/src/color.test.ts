@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 import { parseCssColor, readCssColor } from './color'
+import { forAll } from './test-support'
 
 describe('css colour readback', () => {
   it('parses rgb, rgba and color(srgb)', () => {
@@ -24,6 +25,40 @@ describe('css colour readback', () => {
     const red = parseCssColor('oklch(0.6 0.2 30)')!
     expect(red[0]).toBeGreaterThan(red[1])
     expect(red[0]).toBeGreaterThan(red[2])
+  })
+
+  it('keeps every channel inside 0..1, whatever the oklch input', () => {
+    forAll(
+      300,
+      [
+        [0, 1.2],
+        [0, 0.5],
+        [0, 360],
+      ],
+      (lightness, chroma, hue) => {
+        const rgb = parseCssColor(`oklch(${lightness} ${chroma} ${hue})`)!
+        for (const channel of rgb) {
+          expect(channel).toBeGreaterThanOrEqual(0)
+          expect(channel).toBeLessThanOrEqual(1)
+        }
+      },
+    )
+  })
+
+  it('makes a lighter grey at least as bright in every channel', () => {
+    forAll(
+      300,
+      [
+        [0, 1],
+        [0, 1],
+      ],
+      (a, b) => {
+        const [dark, light] = a <= b ? [a, b] : [b, a]
+        const low = parseCssColor(`oklch(${dark} 0 0)`)!
+        const high = parseCssColor(`oklch(${light} 0 0)`)!
+        low.forEach((channel, i) => expect(high[i]!).toBeGreaterThanOrEqual(channel))
+      },
+    )
   })
 
   it('reads a colour the browser keeps in oklch instead of falling back to black', () => {
