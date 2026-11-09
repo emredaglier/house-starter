@@ -22,6 +22,9 @@
 //   SMOKE_RUNNER        a node script to run against the container instead of Playwright, with
 //                       SMOKE_BASE_URL and SMOKE_OUTPUT_DIR set (the perf suite uses this). Its
 //                       exit code is the result.
+//   SMOKE_EXTRA_SECRETS a JSON array of strings the secrets-in-bundle spec must not find. To see
+//                       that spec fail, name a string the page serves:
+//                       SMOKE_EXTRA_SECRETS='["Glow example"]' pnpm smoke -g "no server secret"
 //   SMOKE_KEEP=1        keep the temp dir and container for debugging
 //   SMOKE_OUTPUT_DIR    where traces, screenshots and the HTML report go (smoke/.output)
 import { spawn, spawnSync, type SpawnOptions } from 'node:child_process'
@@ -174,6 +177,13 @@ try {
         ...env,
         SMOKE_BASE_URL: baseUrl,
         SMOKE_REVALIDATE_SECRET: SECRETS.REVALIDATE_SECRET,
+        // Every secret the gate's processes hold: the secrets-in-bundle spec looks for them in
+        // everything the browser is served.
+        SMOKE_SECRETS: JSON.stringify([
+          ...Object.values(SECRETS),
+          WEB_PAYLOAD_SECRET,
+          ...(JSON.parse(env.SMOKE_EXTRA_SECRETS ?? '[]') as string[]),
+        ]),
         SMOKE_ASSET_PREFIX: assetPrefix,
         SMOKE_OUTPUT_DIR: outputDir,
       },

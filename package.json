@@ -7,6 +7,7 @@
     "lint": "node scripts/check-effects.mjs && eslint . && prettier --check .",
     "lint:fix": "eslint . --fix && prettier --write .",
     "format": "prettier --write .",
+    "check:assets": "node scripts/check-assets.ts",
     "typecheck": "tsc --noEmit && pnpm -r --parallel typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -20,6 +21,7 @@
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "3.1157.0",
+    "@axe-core/playwright": "4.14.0",
     "@playwright/test": "1.63.0",
     "@types/node": "24.19.1",
     "eslint": "9.39.5",
