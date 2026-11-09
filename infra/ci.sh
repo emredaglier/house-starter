@@ -3,7 +3,8 @@
 # (.github/workflows/ci.yml) only orchestrates: checkout, tool setup, then one call here.
 #
 #   infra/ci.sh lint-workflows        actionlint on .github/workflows (local binary, else Docker)
-#   infra/ci.sh check                 workflow lint + pnpm lint, typecheck, test
+#   infra/ci.sh check                 workflow lint + pnpm lint, check:assets (asset-weight budget),
+#                                     typecheck, test
 #   infra/ci.sh verify-release <tag>  fail unless HEAD is on origin/main (a release is cut from main only)
 #   infra/ci.sh build <id>            web, cms and migrate images for linux/amd64, tagged <id>
 #   infra/ci.sh smoke <id>            pnpm smoke against the already built web image
@@ -17,15 +18,16 @@
 #   infra/ci.sh deploy <tag>          copy infra/ to the server as releases/<tag>/, run that
 #                                     deploy.sh, then prune static releases except the live ones
 #
-# <id> is a release tag, or a git sha when run by hand (CI builds and smoke-tests a release tag
-# only: pull requests and main run `check` alone). <tag> is a release tag such as v1.2.3: only a
-# tag is ever published, uploaded or deployed. The tag names the images, the CDN folder
+# <id> is a release tag, or a git sha (pull requests and main build only the web image, with
+# CI_TARGETS=web, and smoke-test it: ADR-0012). <tag> is a release tag such as v1.2.3: only a tag is
+# ever published, uploaded or deployed. The tag names the images, the CDN folder
 # (releases/<tag>) and the deploy, so a tag is never reused.
 #
 # Env:
 #   IMAGE_PREFIX         default ghcr.io/<GITHUB_REPOSITORY_OWNER, lowercased>/<PROJECT_NAME>, else <PROJECT_NAME>
 #   PROJECT_NAME, DOMAIN, CDN_ORIGIN, R2 bucket names, APP_DIR: from infra/project.env (project.sh)
 #   CI_BUILD_CACHE_DIR   build: local buildx cache directory (CI restores it with actions/cache)
+#   CI_TARGETS           build: the images to make, default "web cms migrate"; the pull request gate sets "web"
 #   CI_PLATFORM          build: docker platform, default linux/amd64 (set the native one for a quick local run)
 #   IMAGE_SIZE_LIMIT_MB  build: warn above this size, default 300
 #   R2_ACCOUNT_ID, R2_MEDIA_WRITE_KEY_ID, R2_MEDIA_WRITE_SECRET   upload, deploy (prune)
@@ -80,6 +82,12 @@ group_vars() {
   esac
 }
 
+# The images `build` makes: all of them, unless CI_TARGETS names fewer (the pull request gate builds web only).
+read -ra build_targets <<<"${CI_TARGETS:-${targets[*]}}"
+for t in "${build_targets[@]}"; do
+  case " ${targets[*]} " in *" $t "*) ;; *) die "unknown CI_TARGETS entry '$t' (web | cms | migrate)" ;; esac
+done
+
 cmd="${1:-}"
 if [ $# -gt 0 ]; then shift; fi
 
@@ -97,6 +105,7 @@ case "$cmd" in
     cd "$root"
     "$here/ci.sh" lint-workflows
     pnpm lint
+    pnpm check:assets
     pnpm typecheck
     pnpm test
     ;;
@@ -126,7 +135,7 @@ case "$cmd" in
     fi
     # The same build args for every target keep the shared `build` stage one cached layer. Only
     # web reads them. The cache is rotated afterwards, or it grows with every run.
-    for t in "${targets[@]}"; do
+    for t in "${build_targets[@]}"; do
       log "building $t for ${CI_PLATFORM:-linux/amd64}"
       docker buildx build --platform "${CI_PLATFORM:-linux/amd64}" --target "$t" "${args[@]}" ${cache[@]+"${cache[@]}"} \
         -t "$p/$t:$release" --load .
@@ -138,7 +147,8 @@ case "$cmd" in
     # Recheck sizes on amd64. A warning, not a failure: the owner decides what to do.
     limit="${IMAGE_SIZE_LIMIT_MB:-300}"
     docker image ls --format 'table {{.Repository}}\t{{.Tag}}\t{{.Size}}' "$p/*"
-    for t in web cms; do
+    for t in "${build_targets[@]}"; do
+      [ "$t" != migrate ] || continue
       # The size `docker image ls` prints (what the size target is measured in). `inspect .Size` is the
       # compressed size on the containerd image store, so it would understate this.
       size="$(docker image ls --format '{{.Size}}' "$p/$t:$release")"
