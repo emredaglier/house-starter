@@ -376,6 +376,57 @@ esac`,
     }
   })
 
+  it('build makes only the images CI_TARGETS names, for the pull request gate', () => {
+    const box = sandbox()
+    try {
+      const r = ci(['build', SHA], { ...registry, ...box.env, CI_TARGETS: 'web' })
+      expect(r.status, r.out).toBe(0)
+      const builds = box.calls().filter((c) => c.startsWith('docker buildx build '))
+      expect(builds).toHaveLength(1)
+      expect(builds[0]).toContain(`--target web `)
+      expect(builds[0]).toContain(`-t ${P}/web:${SHA}`)
+      expect(builds[0]).toContain(`--build-arg DEPLOYMENT_ID=${SHA}`)
+    } finally {
+      box.done()
+    }
+  })
+
+  it('build refuses a target that is not an image of this repo, before it builds anything', () => {
+    const box = sandbox()
+    try {
+      const r = ci(['build', SHA], { ...registry, ...box.env, CI_TARGETS: 'web docs' })
+      expect(r.status).toBe(1)
+      expect(r.out).toContain('docs')
+      expect(box.calls().some((c) => c.startsWith('docker buildx build '))).toBe(false)
+    } finally {
+      box.done()
+    }
+  })
+
+  it('check runs lint, the asset-weight budget, typecheck and the unit tests, in that order', () => {
+    const box = sandbox()
+    const dir = path.dirname(box.env.ASSETS_CMD)
+    for (const name of ['pnpm', 'actionlint'])
+      fs.writeFileSync(
+        path.join(dir, name),
+        `#!/usr/bin/env bash\necho "${name} $*" >>"$(dirname "$0")/calls"\n`,
+        { mode: 0o755 },
+      )
+    try {
+      const r = ci(['check'], { ...box.env })
+      expect(r.status, r.out).toBe(0)
+      expect(box.calls()).toEqual([
+        expect.stringMatching(/^actionlint /),
+        'pnpm lint',
+        'pnpm check:assets',
+        'pnpm typecheck',
+        'pnpm test',
+      ])
+    } finally {
+      box.done()
+    }
+  })
+
   it('smoke asks the assets script for the prefix the built image was given', () => {
     // `pnpm smoke` itself is not run here: only what ci.sh hands to it is.
     const box = sandbox()

@@ -3,7 +3,10 @@
 # the owner's secrets skip cleanly while those are unset, so the pipeline is green from day one.
 #
 # Two paths:
-#  - Pull requests and pushes to main run `check` (lint, types, unit tests) and nothing else.
+#  - Pull requests and pushes to main run `check` (lint, the asset-weight budget, types, unit tests)
+#    and `browser` (the web image built for this commit and the browser checks of the smoke gate:
+#    route sweep, accessibility, secrets in the bundle, WebGL fallback; ADR-0012). Nothing is
+#    published from them.
 #  - A release tag (v1.2.3) runs the whole delivery: `check`, then `build` (images, then the smoke
 #    test on the same runner), then `upload`, `push` and `deploy`. Nothing is built into an image,
 #    published, uploaded to the CDN or deployed from anywhere but a release tag. HQ cuts the tag
@@ -70,9 +73,63 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # No browser here: no unit test starts one. The smoke test in `build` does.
+      # No browser here: no unit test starts one. The smoke test in `browser` and `build` does.
       - name: Workflow lint, lint, typecheck, unit tests
         run: infra/ci.sh check
+
+  # The browser checks on every pull request and on main (ADR-0012): the web image of this commit
+  # is built (not published) and the smoke gate runs against it, as `build` does on a tag. A pull
+  # request needs no secrets, and no job here gets a registry or deploy permission.
+  browser:
+    if: "!(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v4
+      - uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/buildx-cache
+          key: buildx-${{ github.sha }}
+          restore-keys: buildx-
+      # Only web is smoke-tested, so only web is built.
+      - name: Build the web image
+        env:
+          CI_BUILD_CACHE_DIR: ${{ runner.temp }}/buildx-cache
+          CI_TARGETS: web
+        run: infra/ci.sh build "$RELEASE"
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # See `build` for the browser cache. Each download has its own timeout: a hung package
+      # mirror should fail in minutes and be re-run, not hold the job to its own limit.
+      - uses: actions/cache@v6
+        id: playwright
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-chromium-${{ hashFiles('pnpm-lock.yaml') }}
+      - if: steps.playwright.outputs.cache-hit != 'true'
+        timeout-minutes: 10
+        run: pnpm exec playwright install --with-deps chromium
+      - if: steps.playwright.outputs.cache-hit == 'true'
+        timeout-minutes: 5
+        run: pnpm exec playwright install-deps chromium
+      - name: Smoke test and browser checks against the built web image
+        run: infra/ci.sh smoke "$RELEASE"
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        # A report, not a result: if it can't be stored (the storage quota), the run fails only on
+        # the checks themselves.
+        continue-on-error: true
+        with:
+          name: smoke-output
+          path: smoke/.output
+          include-hidden-files: true
+          retention-days: 2
+          if-no-files-found: ignore
 
   # Everything below runs on a release tag only.
 
@@ -117,8 +174,10 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-chromium-${{ hashFiles('pnpm-lock.yaml') }}
       - if: steps.playwright.outputs.cache-hit != 'true'
+        timeout-minutes: 10
         run: pnpm exec playwright install --with-deps chromium
       - if: steps.playwright.outputs.cache-hit == 'true'
+        timeout-minutes: 5
         run: pnpm exec playwright install-deps chromium
       - name: Smoke test against the built web image
         run: infra/ci.sh smoke "$RELEASE"

@@ -7,6 +7,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import {
+  allStrings,
   commandLines,
   loadWorkflow,
   needsOf,
@@ -121,6 +122,46 @@ describe('ci.yml: delivery only from a release tag, after every check (ADR-0005)
         allowed.some((re) => re.test(line)),
         line,
       ).toBe(true)
+  })
+
+  it('runs the browser checks on every pull request and on main, publishing nothing (ADR-0012)', () => {
+    const browser = job('browser')
+    // The mirror image of the delivery jobs: everything but a release tag.
+    expect(browser.if).toBe(`!(${ON_TAG})`)
+    // It builds the web image only, for this commit, and smoke-tests it.
+    const calls = runs('browser')
+    expect(calls).toContain('infra/ci.sh build "$RELEASE"')
+    expect(calls).toContain('infra/ci.sh smoke "$RELEASE"')
+    expect(
+      browser.steps.find((s) => s.run === 'infra/ci.sh build "$RELEASE"')?.env?.CI_TARGETS,
+    ).toBe('web')
+    // No registry, no deploy, no secrets: it holds the workflow's read-only token and nothing else.
+    expect(calls.join('\n')).not.toMatch(/ci\.sh (publish|upload|push|deploy|gate)\b/)
+    expect(browser.permissions).toBeUndefined()
+    expect(browser.env).toBeUndefined()
+    expect(allStrings(browser).join('\n')).not.toMatch(/secrets\./)
+    expect(needsOf(browser)).toEqual([])
+    // Nothing that publishes waits for it: a tag run has its own smoke test in `build`.
+    for (const name of DELIVERY) expect(needsOf(job(name)), name).not.toContain('browser')
+  })
+
+  it('gives every browser download its own timeout, so a hung mirror fails in minutes', () => {
+    for (const name of ['browser', 'build']) {
+      const installs = job(name).steps.filter((s) => /playwright install/.test(s.run ?? ''))
+      expect(installs.length, name).toBe(2)
+      for (const step of installs) {
+        expect(typeof step['timeout-minutes'], `${name}: ${step.run}`).toBe('number')
+        expect(step['timeout-minutes'] as number).toBeLessThanOrEqual(10)
+      }
+    }
+  })
+
+  it('stores a failed run output for two days at most, and never lets the upload fail the run', () => {
+    for (const name of ['browser', 'build']) {
+      const upload = job(name).steps.find((s) => s.uses?.startsWith('actions/upload-artifact'))
+      expect(upload?.['continue-on-error'], name).toBe(true)
+      expect(upload?.with?.['retention-days'] as number, name).toBeLessThanOrEqual(2)
+    }
   })
 
   it('installs no browser for check: no unit test starts one', () => {
