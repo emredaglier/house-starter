@@ -13,9 +13,12 @@
     "build": "pnpm -r --workspace-concurrency=1 build",
     "dev": "pnpm --filter @house/web dev",
     "migrate": "pnpm --filter @house/cms migrate",
-    "seed": "pnpm --filter @house/cms seed"
+    "seed": "pnpm --filter @house/cms seed",
+    "smoke": "node smoke/run.ts"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "3.1157.0",
+    "@playwright/test": "1.63.0",
     "@types/node": "24.19.1",
     "eslint": "9.39.5",
     "eslint-config-next": "16.4.5",

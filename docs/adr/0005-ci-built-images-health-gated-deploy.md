@@ -23,5 +23,6 @@ whenever a build fails.
 - No permanent staging environment.
 
 ## Consequences
-Every release is an immutable image that can be rolled back with one command. The pipeline files
-arrive with the infra ticket.
+Every release is an immutable image that can be rolled back with one command. The pipeline files are
+in `.github/workflows/` and `infra/`. Images are built, published and deployed from a release tag
+only (`v1.2.3`); pull requests and `main` run lint, typecheck and unit tests.

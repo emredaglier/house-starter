@@ -21,5 +21,5 @@ otherwise a set of mostly static pages.
 - The public attack surface is static-like pages only, so there is no origin rate limiting to tune.
 - The preview instance costs about 200 MB of RAM.
 - Losing Tailscale access means losing admin access. Recovery is SSH from the host's console.
-- The infra that implements this (Compose, the proxy, the preview instance) arrives with the infra
-  ticket; this ADR is the rule it must meet.
+- The infra that implements this (Compose, the proxy, the preview instance) is in `infra/`; this ADR
+  is the rule it meets.
