@@ -17,5 +17,6 @@ them.
   `packages/motion`), which the Sentry integration listens for.
 
 ## Consequences
-Adds one third party, Sentry, which a project's privacy notice must name. The integrations arrive
-with the infra ticket and per project.
+Adds one third party, Sentry, which a project's privacy notice must name. Deploy smoke checks,
+rollback alerts and the UptimeRobot setup are in `infra/`; the Sentry and Web Analytics integrations
+arrive per project.

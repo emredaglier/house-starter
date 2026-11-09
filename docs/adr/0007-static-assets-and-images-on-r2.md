@@ -15,5 +15,5 @@ in `srcset`, cost bandwidth and time.
 
 ## Consequences
 The VPS does no image work while serving visitors; resizing happens in `cms` at upload time. The
-starter's web config already reads `ASSET_PREFIX` and `DEPLOYMENT_ID`; the upload scripts and the
-media collection arrive with the infra ticket and the first project that needs images.
+starter's web config reads `ASSET_PREFIX` and `DEPLOYMENT_ID`, and `infra/` holds the upload scripts.
+The media collection arrives with the first project that needs images.
