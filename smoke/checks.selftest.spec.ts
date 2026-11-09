@@ -12,7 +12,13 @@ import type { Page } from '@playwright/test'
 import { a11yProblems } from './a11y.ts'
 import { expect, test } from './fixtures.ts'
 import { sweepProblems } from './sweep.ts'
-import { domFallbackProblems, withBrokenShaders, withoutWebGL, type EffectPage } from './webgl.ts'
+import {
+  domFallbackProblems,
+  effectTried,
+  withBrokenShaders,
+  withoutWebGL,
+  type EffectPage,
+} from './webgl.ts'
 
 const page = (title: string, body: string, head = '') =>
   `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title>${head}</head><body>${body}</body></html>`
@@ -50,6 +56,8 @@ const serve = (target: Page, name: string, body: string, status = 200) =>
     route.fulfill({ status, contentType: 'text/html', body }),
   )
 const path = (name: string) => `/__selftest/${name}`
+/** A broken page stays broken: the check's retry has nothing to wait for. */
+const BROKEN_WAIT = 1_000
 const effect = (name: string, text: string): EffectPage => ({
   route: path(name),
   text: [text],
@@ -85,7 +93,7 @@ test.describe('check self-test: route sweep', () => {
     const problems = (await sweepProblems(p, visit, path('sweep-broken'))).join('\n')
     expect(problems).toContain('console error: boom')
     expect(problems).toContain('no <title>')
-    expect(problems).toContain('0 <h1> in main#main')
+    expect(problems).toContain('0 <h1> headings')
   })
 
   test('fails a route that answers a server error', async ({ page: p, visit }) => {
@@ -104,27 +112,39 @@ test.describe('check self-test: WebGL DOM fallback', () => {
     await withoutWebGL(context)
     await serve(p, 'needs-webgl', PAGES.needsWebGL)
     await visit(path('needs-webgl'))
-    expect(await domFallbackProblems(p, effect('needs-webgl', 'Needs WebGL'))).toEqual([
-      '"Needs WebGL" is not visible without WebGL',
-    ])
+    await effectTried(p)
+    expect(await domFallbackProblems(p, effect('needs-webgl', 'Needs WebGL'), BROKEN_WAIT)).toEqual(
+      ['"Needs WebGL" is not visible without WebGL'],
+    )
   })
 
   test('finds an effect canvas left on the page', async ({ context, page: p, visit }) => {
     await withBrokenShaders(context)
     await serve(p, 'dead-canvas', PAGES.deadCanvas)
     await visit(path('dead-canvas'))
-    expect(await domFallbackProblems(p, effect('dead-canvas', 'Dead canvas'))).toEqual([
-      '1 effect canvas left on the page after the effect failed',
-    ])
+    expect(await domFallbackProblems(p, effect('dead-canvas', 'Dead canvas'), BROKEN_WAIT)).toEqual(
+      ['1 effect canvas left on the page after the effect failed'],
+    )
   })
 
   test('finds content that is there but transparent', async ({ page: p, visit }) => {
     await serve(p, 'faded', PAGES.faded)
     await visit(path('faded'))
     // `isVisible` is true for opacity 0, so the problem is the transparency.
-    expect(await domFallbackProblems(p, effect('faded', 'Faded'))).toEqual([
+    expect(await domFallbackProblems(p, effect('faded', 'Faded'), BROKEN_WAIT)).toEqual([
       '"Faded" is there but transparent without WebGL',
     ])
+  })
+
+  test('finds an effect that never asks for a WebGL context, so there is nothing to check yet', async ({
+    context,
+    page: p,
+    visit,
+  }) => {
+    await withoutWebGL(context)
+    await serve(p, 'clean', PAGES.clean)
+    await visit(path('clean'))
+    await expect(effectTried(p, BROKEN_WAIT)).rejects.toThrow('never asked for a WebGL context')
   })
 
   test('finds nothing on a page that works without WebGL', async ({ context, page: p, visit }) => {

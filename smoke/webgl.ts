@@ -6,7 +6,7 @@
 // Adapted from darkroom.engineering's Satus (lib/hooks/use-device-detection.ts and
 // lib/webgl/README.md, MIT; see THIRD-PARTY-NOTICES.md): every WebGL surface has a DOM fallback
 // for software renderers and devices without WebGL, and nothing may depend on the canvas.
-import type { BrowserContext, Page } from '@playwright/test'
+import { expect, type BrowserContext, type Page } from '@playwright/test'
 
 import { MOTION_FAULT_EVENT } from '../packages/motion/src/fault.ts'
 
@@ -42,6 +42,24 @@ export async function recordFaults(context: BrowserContext): Promise<void> {
 export const faultsOf = (page: Page): Promise<Fault[]> =>
   page.evaluate(() => (window as unknown as { __faults?: Fault[] }).__faults ?? [])
 
+/** How many times the page asked for a WebGL context that `withoutWebGL` / `withBrokenShaders` refused. */
+export const glRequestsOf = (page: Page): Promise<number> =>
+  page.evaluate(() => (window as unknown as { __glRequests?: number }).__glRequests ?? 0)
+
+/**
+ * Waits until the page's effect has asked for a WebGL context and been refused: the outcome that
+ * says its mount code has run (after hydration), so what is checked next is what is left, not what
+ * the server rendered. Retries until the expect timeout, then fails naming what it waited for.
+ */
+export async function effectTried(page: Page, timeout?: number): Promise<void> {
+  await expect
+    .poll(() => glRequestsOf(page), {
+      message: 'the effect never asked for a WebGL context',
+      ...(timeout === undefined ? {} : { timeout }),
+    })
+    .toBeGreaterThan(0)
+}
+
 /** A browser with no WebGL: `getContext('webgl2' | 'webgl')` answers null, as it does on an old device. */
 export async function withoutWebGL(context: BrowserContext): Promise<void> {
   await context.addInitScript(() => {
@@ -51,7 +69,11 @@ export async function withoutWebGL(context: BrowserContext): Promise<void> {
       type: string,
       ...rest: unknown[]
     ) {
-      if (/^(experimental-)?webgl2?$/.test(type)) return null
+      if (/^(experimental-)?webgl2?$/.test(type)) {
+        const counter = window as unknown as { __glRequests?: number }
+        counter.__glRequests = (counter.__glRequests ?? 0) + 1
+        return null
+      }
       return (original as (...args: unknown[]) => unknown).call(this, type, ...rest)
     } as typeof original
   })
@@ -82,25 +104,18 @@ export async function withBrokenShaders(context: BrowserContext): Promise<void> 
       type: string,
       ...rest: unknown[]
     ) {
-      if (type === 'webgl2') return fake
+      if (type === 'webgl2') {
+        const counter = window as unknown as { __glRequests?: number }
+        counter.__glRequests = (counter.__glRequests ?? 0) + 1
+        return fake
+      }
       return (original as (...args: unknown[]) => unknown).call(this, type, ...rest)
     } as typeof original
   })
 }
 
-/** Frames for a mount effect that runs after hydration to have run and painted. */
-const settle = (page: Page) =>
-  page.evaluate(
-    () =>
-      new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-      ),
-  )
-
-/** What is wrong with the effect page now open when its effect is not running; empty is fine. */
-export async function domFallbackProblems(page: Page, effect: EffectPage): Promise<string[]> {
-  await page.waitForLoadState('networkidle')
-  await settle(page)
+/** What is wrong with the effect page now open, read once; empty is fine. */
+async function problemsNow(page: Page, effect: EffectPage): Promise<string[]> {
   const problems: string[] = []
   for (const text of effect.text) {
     const element = page.getByText(text, { exact: true }).first()
@@ -120,5 +135,24 @@ export async function domFallbackProblems(page: Page, effect: EffectPage): Promi
   const canvases = await page.locator(effect.canvas).count()
   if (canvases > 0)
     problems.push(`${canvases} effect canvas left on the page after the effect failed`)
+  return problems
+}
+
+/**
+ * What is wrong with the effect page now open when its effect is not running; empty is fine. It
+ * retries until the page has no problem or `timeout` runs out (a canvas is removed, a fade ends),
+ * then reports what was last seen, so a broken page costs the timeout and a good one nothing. Call
+ * `effectTried` first: before the effect's mount code has run, the server's HTML is all there is.
+ */
+export async function domFallbackProblems(
+  page: Page,
+  effect: EffectPage,
+  timeout = 5_000,
+): Promise<string[]> {
+  let problems = ['the effect page could not be read']
+  await expect
+    .poll(async () => (problems = await problemsNow(page, effect)), { timeout })
+    .toEqual([])
+    .catch(() => undefined)
   return problems
 }

@@ -7,7 +7,8 @@
 #                                     typecheck, test
 #   infra/ci.sh verify-release <tag>  fail unless HEAD is on origin/main (a release is cut from main only)
 #   infra/ci.sh build <id>            web, cms and migrate images for linux/amd64, tagged <id>
-#   infra/ci.sh smoke <id>            pnpm smoke against the already built web image
+#   infra/ci.sh smoke <id> [args]     pnpm smoke against the already built web image; a release tag
+#                                     leaves out the self-tests of the checks; args go to Playwright
 #   infra/ci.sh publish <tag>         push the <tag> images to the registry; print each pushed digest
 #                                     as <target>=<prefix>/<target>@sha256:... (also to $GITHUB_OUTPUT)
 #   infra/ci.sh gate <group>          print ready=true|false (also to $GITHUB_OUTPUT) depending on
@@ -27,7 +28,7 @@
 #   IMAGE_PREFIX         default ghcr.io/<GITHUB_REPOSITORY_OWNER, lowercased>/<PROJECT_NAME>, else <PROJECT_NAME>
 #   PROJECT_NAME, DOMAIN, CDN_ORIGIN, R2 bucket names, APP_DIR: from infra/project.env (project.sh)
 #   CI_BUILD_CACHE_DIR   build: local buildx cache directory (CI restores it with actions/cache)
-#   CI_TARGETS           build: the images to make, default "web cms migrate"; the pull request gate sets "web"
+#   CI_TARGETS           build only: the images to make, default "web cms migrate"; the pull request gate sets "web"
 #   CI_PLATFORM          build: docker platform, default linux/amd64 (set the native one for a quick local run)
 #   IMAGE_SIZE_LIMIT_MB  build: warn above this size, default 300
 #   R2_ACCOUNT_ID, R2_MEDIA_WRITE_KEY_ID, R2_MEDIA_WRITE_SECRET   upload, deploy (prune)
@@ -82,12 +83,6 @@ group_vars() {
   esac
 }
 
-# The images `build` makes: all of them, unless CI_TARGETS names fewer (the pull request gate builds web only).
-read -ra build_targets <<<"${CI_TARGETS:-${targets[*]}}"
-for t in "${build_targets[@]}"; do
-  case " ${targets[*]} " in *" $t "*) ;; *) die "unknown CI_TARGETS entry '$t' (web | cms | migrate)" ;; esac
-done
-
 cmd="${1:-}"
 if [ $# -gt 0 ]; then shift; fi
 
@@ -126,6 +121,11 @@ case "$cmd" in
 
   build)
     build_arg "${1:-}"; release="$1"; p="$(prefix)"
+    # The images to make: all of them, unless CI_TARGETS names fewer (the pull request gate builds web only).
+    read -ra build_targets <<<"${CI_TARGETS:-${targets[*]}}"
+    for t in "${build_targets[@]}"; do
+      case " ${targets[*]} " in *" $t "*) ;; *) die "unknown CI_TARGETS entry '$t' (web | cms | migrate)" ;; esac
+    done
     cd "$root"
     read -ra args <<<"$("$assets_cmd" build-args "$release")"
     cache=()
@@ -181,13 +181,18 @@ case "$cmd" in
     ;;
 
   smoke)
-    build_arg "${1:-}"; release="$1"
+    build_arg "${1:-}"; release="$1"; shift
     cd "$root"
+    # A release tag runs the same checks of the page (routes, accessibility, secrets, WebGL), but
+    # not the self-tests of the check code (smoke/checks.selftest.spec.ts): those ran on the pull
+    # request and on main, and a tag is cut from main (ADR-0012).
+    filter=()
+    if [[ "$release" == v* ]]; then filter=(--grep-invert "check self-test"); fi
     # The browser requests /_next/ from the CDN prefix the image was built with; the smoke runner
     # answers those requests from the container, so nothing leaves the machine.
     SMOKE_WEB_IMAGE="$(prefix)/web:$release" \
       SMOKE_ASSET_PREFIX="$("$assets_cmd" asset-prefix "$release")" \
-      pnpm smoke
+      pnpm smoke ${filter[@]+"${filter[@]}"} "$@"
     ;;
 
   gate)

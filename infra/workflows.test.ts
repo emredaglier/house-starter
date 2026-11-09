@@ -145,6 +145,56 @@ describe('ci.yml: delivery only from a release tag, after every check (ADR-0005)
     for (const name of DELIVERY) expect(needsOf(job(name)), name).not.toContain('browser')
   })
 
+  // The repo requires `check` and `browser` on main (infra/README.md, "Setup"): a required check that
+  // never starts stays pending, so a pull request must always start both.
+  it('always starts the required checks on a pull request, a docs-only change included', () => {
+    const pull = (ci.on.pull_request ?? {}) as Record<string, unknown>
+    for (const filter of ['paths', 'paths-ignore', 'branches', 'branches-ignore', 'types']) {
+      expect(pull, filter).not.toHaveProperty(filter)
+    }
+    for (const name of ['check', 'browser']) {
+      // The check's name on GitHub is the job's name, so it must stay the id the ruleset lists.
+      expect(job(name).name, name).toBeUndefined()
+      expect(needsOf(job(name)), name).toEqual([])
+    }
+    expect(job('check').if).toBeUndefined()
+    // True for a pull request: the only thing `browser` skips is a release tag.
+    expect(job('browser').if).toBe(`!(${ON_TAG})`)
+  })
+
+  it('keeps the browser gate to what a tag also runs, and leaves the choice of subset to ci.sh', () => {
+    // Which specs a tag skips (the self-tests of the checks) is decided in `infra/ci.sh smoke` and
+    // tested in infra/ci.test.ts; a workflow that filtered specs itself would make the two differ.
+    const smokes = ['browser', 'build'].map((name) =>
+      job(name).steps.find((step) => /ci\.sh smoke/.test(step.run ?? '')),
+    )
+    for (const step of smokes) {
+      expect(step?.run).toBe('infra/ci.sh smoke "$RELEASE"')
+      expect(step?.env).toBeUndefined()
+    }
+  })
+
+  // One cache entry per commit: if every pull request saved one, they would push out main's.
+  it('lets a pull request read the build cache and only main write it', () => {
+    const steps = job('browser').steps
+    const restore = steps.findIndex((s) => s.uses?.startsWith('actions/cache/restore@'))
+    const build = steps.findIndex((s) => s.run === 'infra/ci.sh build "$RELEASE"')
+    const save = steps.findIndex((s) => s.uses?.startsWith('actions/cache/save@'))
+    expect(restore).toBeGreaterThan(-1)
+    expect(restore).toBeLessThan(build)
+    expect(save).toBeGreaterThan(build)
+    expect(steps[save]?.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/main'")
+    expect(steps[restore]?.if).toBeUndefined()
+    // No step that both reads and writes the build cache: it would save on every pull request.
+    expect(steps.map((s) => s.uses ?? '').filter((u) => /^actions\/cache@/.test(u))).toEqual([
+      expect.stringMatching(/^actions\/cache@/),
+    ]) // the Playwright browser cache, keyed by the lockfile
+    expect(
+      steps.find((s) => s.uses?.startsWith('actions/cache@'))?.with?.path,
+      'the one read-write cache is the browser download, not the build layers',
+    ).toBe('~/.cache/ms-playwright')
+  })
+
   it('gives every browser download its own timeout, so a hung mirror fails in minutes', () => {
     for (const name of ['browser', 'build']) {
       const installs = job(name).steps.filter((s) => /playwright install/.test(s.run ?? ''))
