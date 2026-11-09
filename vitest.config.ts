@@ -6,6 +6,7 @@ export default defineConfig({
       'scripts/**/*.test.ts',
       'infra/**/*.test.ts',
       'smoke/**/*.test.ts',
+      'perf/**/*.test.ts',
       '{apps,packages}/*/src/**/*.test.{ts,tsx}',
     ],
   },
