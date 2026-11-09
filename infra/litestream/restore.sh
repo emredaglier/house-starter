@@ -18,7 +18,7 @@ mkdir -p "$dir"
 [[ -z "$(ls -A "$dir")" ]] || { echo "restore: $dir is not empty" >&2; exit 1; }
 dir="$(cd "$dir" && pwd)"
 
-docker compose "${compose[@]}" run --rm --no-deps --user root -v "$dir:/restore" litestream \
+docker compose ${compose[@]+"${compose[@]}"} run --rm --no-deps --user root -v "$dir:/restore" litestream \
   restore -config /etc/litestream/litestream.yml -o /restore/site.db "$@" /data/site.db
 chown 10001:10001 "$dir" "$dir"/site.db* 2>/dev/null \
   || echo "restore: now run: sudo chown 10001:10001 $dir $dir/site.db*"

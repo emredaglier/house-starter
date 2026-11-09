@@ -5,8 +5,6 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const script = path.resolve(import.meta.dirname, 'ci.sh')
-const file = path.resolve(import.meta.dirname, '../.github/workflows/ci.yml')
-const text = fs.readFileSync(file, 'utf8')
 
 function ci(args: string[], env: Record<string, string> = {}) {
   // A clean environment: nothing from the developer's shell may satisfy a secret gate.
@@ -87,7 +85,16 @@ describe('secret gates (the steps that skip until the owner sets the secrets)', 
       expect(r.status, cmd).toBe(1)
       expect(r.out, cmd).toContain('release tag')
     }
-    for (const bad of ['1.2.3', 'v1', 'v1.2', 'v1.2.3+build', 'v1.2.3/../x', 'vlatest']) {
+    // A release tag is also a valid release name (infra/project.sh): not longer than 100.
+    for (const bad of [
+      '1.2.3',
+      'v1',
+      'v1.2',
+      'v1.2.3+build',
+      'v1.2.3/../x',
+      'vlatest',
+      `v1.2.3-${'x'.repeat(100)}`,
+    ]) {
       expect(ci(['deploy', bad]).status, bad).toBe(1)
     }
   })
@@ -300,168 +307,143 @@ describe('images go between jobs by digest, through the registry', () => {
   })
 })
 
-describe('ci workflow', () => {
-  const jobs = text.split(/^jobs:\n/m)[1] ?? ''
-  const jobBlock = (name: string) =>
-    new RegExp(`^  ${name}:\\n([\\s\\S]*?)(?=^  \\w[\\w-]*:\\n|(?![\\s\\S]))`, 'm').exec(
-      jobs,
-    )?.[1] ?? ''
-  const onTag = "if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')"
+// A fake `ssh` that records what it is asked to run and answers `live-releases` the way the server
+// does; `ASSETS_CMD` is a fake assets script. No server, no registry, no bucket.
+describe('release steps run the other scripts as the deploy expects', () => {
+  const P = 'ghcr.io/o/atlas'
+  const registry = { IMAGE_PREFIX: P, GHCR_TOKEN: 't', GITHUB_ACTOR: 'a' }
 
-  it('runs on pull requests, on main and on release tags, except for docs and tickets alone', () => {
-    // A change only under docs/ or .scratch/ starts no run on a branch. GitHub does not apply
-    // `paths` to a tag push, so a release tag always runs.
-    const filter = [
-      '    paths:',
-      "      - '**'",
-      "      - '!docs/**'",
-      "      - '!.scratch/**'",
-    ].join('\n')
-    const on = text.split(/^on:\n/m)[1]?.split(/^\S/m)[0] ?? ''
-    expect(on).toBe(
-      `  push:\n    branches: [main]\n    tags: ['v[0-9]*']\n${filter}\n  pull_request:\n${filter}\n\n`,
+  function sandbox(options: { liveReleases?: string; failingDeploy?: boolean } = {}) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ci-steps-'))
+    const log = path.join(dir, 'calls')
+    const bin = (name: string, body: string) =>
+      fs.writeFileSync(path.join(dir, name), `#!/usr/bin/env bash\n${body}\n`, { mode: 0o755 })
+    bin(
+      'ssh',
+      `echo "ssh $*" >>"${log}"
+cat >/dev/null <&0 || true
+case "$*" in
+  *"live-releases"*) printf '%b' "${options.liveReleases ?? 'v1.2.2\\nv1.2.3\\n'}" ;;
+  *"deploy.sh deploy"*) ${options.failingDeploy ? 'exit 1' : 'true'} ;;
+esac`,
     )
-  })
-
-  it('has the jobs in delivery order', () => {
-    const order = ['check', 'build', 'upload', 'push', 'deploy']
-    const at = order.map((n) => jobs.search(new RegExp(`^  ${n}:`, 'm')))
-    expect(at.every((i) => i >= 0)).toBe(true)
-    expect([...at].sort((a, b) => a - b)).toEqual(at)
-    expect(jobs).not.toMatch(/^ {2}smoke:/m)
-    // `check` runs beside `build` (neither needs the other), to keep the run short...
-    expect(jobBlock('check')).not.toMatch(/needs:/)
-    expect(jobBlock('build')).not.toMatch(/needs:/)
-    // ...and nothing is uploaded, pushed or deployed unless check AND the build's smoke test passed.
-    expect(jobBlock('upload')).toMatch(/needs: \[check, build\]/)
-    expect(jobBlock('push')).toMatch(/needs: \[build, upload\]/)
-    expect(jobBlock('deploy')).toMatch(/needs: \[push, upload\]/)
-  })
-
-  it('builds images, publishes, uploads and deploys only from a release tag', () => {
-    for (const name of ['build', 'upload', 'push', 'deploy']) {
-      expect(jobBlock(name), name).toContain(`    ${onTag}\n`)
+    bin(
+      'docker',
+      `echo "docker $*" >>"${log}"
+if [ "$1" = image ] && [ "$2" = ls ] && [ "$3" = --format ] && [ "$4" = '{{.Size}}' ]; then echo "120MB"; fi`,
+    )
+    bin(
+      'assets',
+      `echo "assets $*" >>"${log}"
+case "$1" in
+  build-args) echo "--build-arg ASSET_PREFIX=prefix-of-$2 --build-arg DEPLOYMENT_ID=$2" ;;
+  asset-prefix) echo "prefix-of-$2" ;;
+esac`,
+    )
+    return {
+      env: {
+        PATH: `${dir}:${process.env.PATH ?? ''}`,
+        ASSETS_CMD: path.join(dir, 'assets'),
+        CI_PLATFORM: 'linux/arm64',
+      },
+      calls: () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n') : []),
+      done: () => fs.rmSync(dir, { recursive: true, force: true }),
     }
-    // Pull requests and main run `check` alone: no image, no registry, no CDN, no server.
-    expect(jobBlock('check')).not.toMatch(/\n {4}if:/)
-    expect(jobBlock('check')).not.toMatch(/ci\.sh (build|smoke|publish|upload|push|deploy) /)
-    // The release is the tag, so the images, the CDN folder and the deploy all carry its name.
-    expect(text).toContain(
-      "RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha }}",
-    )
-    for (const cmd of ['build', 'smoke', 'publish', 'upload', 'push', 'deploy'])
-      expect(text).toContain(`infra/ci.sh ${cmd} "$RELEASE"`)
-    // A tag must point into main.
-    expect(jobBlock('check')).toContain('infra/ci.sh verify-release "$RELEASE"')
-    expect(jobBlock('check')).toContain('fetch-depth: 0')
-  })
+  }
+  const server = {
+    DEPLOY_HOST: 'h',
+    DEPLOY_USER: 'u',
+    DEPLOY_SSH_KEY: 'key',
+    DEPLOY_HOST_KEY: 'hostkey',
+    APP_DIR: '/srv/atlas',
+  }
 
-  // No unit test starts a browser, and the install once cost `check` 12 minutes.
-  it('installs a browser only for the smoke test, not for check', () => {
-    // Not empty: a renamed job would otherwise pass the next line on its own.
-    expect(jobBlock('check')).toContain('infra/ci.sh check')
-    expect(jobBlock('check')).not.toMatch(/playwright install|ms-playwright/)
-  })
-
-  it('smoke-tests the images on the runner that built them, then publishes them', () => {
-    const build = jobBlock('build')
-    const at = ['infra/ci.sh build ', 'infra/ci.sh smoke ', 'infra/ci.sh publish '].map((s) =>
-      build.indexOf(s),
-    )
-    expect(at.every((i) => i >= 0)).toBe(true)
-    expect([...at].sort((a, b) => a - b)).toEqual(at)
-    // No image artifact: the images reach later jobs through the registry, by digest.
-    expect(text).not.toMatch(/name: images/)
-    expect(text).not.toMatch(/download-artifact/)
-    expect(text).not.toMatch(/infra\/ci\.sh (save|load) /)
-    for (const t of ['web', 'cms', 'migrate'])
-      expect(build).toContain(`${t}: \${{ steps.publish.outputs.${t} }}`)
-    expect(jobBlock('upload')).toContain('WEB_IMAGE: ${{ needs.build.outputs.web }}')
-    for (const t of ['web', 'cms', 'migrate'])
-      expect(jobBlock('push')).toContain(
-        `${t.toUpperCase()}_IMAGE: \${{ needs.build.outputs.${t} }}`,
-      )
-  })
-
-  it('has least-privilege permissions', () => {
-    expect(text).toMatch(/\npermissions:\n {2}contents: read\n/)
-    // build publishes; push moves the latest tags; upload and deploy only pull.
-    for (const name of ['build', 'push']) expect(jobBlock(name), name).toMatch(/packages: write/)
-    for (const name of ['upload', 'deploy']) {
-      expect(jobBlock(name), name).toMatch(/packages: read/)
-      expect(jobBlock(name), name).not.toMatch(/packages: write/)
-    }
-    expect(jobBlock('check')).not.toMatch(/permissions:/)
-  })
-
-  it("never adds an error over the failed smoke test's report", () => {
-    const steps = jobBlock('build').split(/^ {6}- /m)
-    const report = steps.find((s) => s.includes('name: smoke-output')) ?? ''
-    expect(report).toMatch(/if: failure\(\)/)
-    expect(report).toMatch(/continue-on-error: true/)
-  })
-
-  it('never cancels a deploy midway, and runs one at a time', () => {
-    expect(jobBlock('deploy')).toMatch(
-      /concurrency:\n {6}group: deploy\n {6}cancel-in-progress: false/,
-    )
-  })
-
-  it('only gates secrets behind steps that skip, never fails on them', () => {
-    for (const name of ['upload', 'deploy']) {
-      const block = jobBlock(name)
-      expect(block, name).toMatch(/run: infra\/ci\.sh gate /)
-      // Every step after the gate step is conditional on it.
-      const after = block.split(/run: infra\/ci\.sh gate [a-z]+\n/)[1] ?? ''
-      const steps = after.split(/^ {6}- /m).slice(1)
-      expect(steps.length, name).toBeGreaterThan(0)
-      for (const step of steps)
-        expect(step, step).toMatch(/if: steps\.gate\.outputs\.ready == 'true'/)
+  it('build makes the three images with the release tag and the assets script build args', () => {
+    const box = sandbox()
+    try {
+      const r = ci(['build', TAG], { ...registry, ...box.env })
+      expect(r.status, r.out).toBe(0)
+      const builds = box.calls().filter((c) => c.startsWith('docker buildx build '))
+      expect(builds).toHaveLength(3)
+      for (const target of ['web', 'cms', 'migrate']) {
+        const call = builds.find((c) => c.includes(`--target ${target} `))
+        expect(call, target).toContain(`-t ${P}/${target}:${TAG}`)
+        expect(call, target).toContain(`--build-arg DEPLOYMENT_ID=${TAG}`)
+        expect(call, target).toContain(`--build-arg ASSET_PREFIX=prefix-of-${TAG}`)
+      }
+    } finally {
+      box.done()
     }
   })
 
-  it('only orchestrates: every run step is an infra/ci.sh call or tool setup', () => {
-    const runs = [...text.matchAll(/^ +run: (.*)$/gm)].map((m) => m[1] ?? '')
-    const blocks = [...text.matchAll(/^ +run: \|\n((?: {10}.*\n)+)/gm)].flatMap((m) =>
-      (m[1] ?? '').split('\n').filter(Boolean),
+  it('smoke asks the assets script for the prefix the built image was given', () => {
+    // `pnpm smoke` itself is not run here: only what ci.sh hands to it is.
+    const box = sandbox()
+    const pnpm = path.join(path.dirname(box.env.ASSETS_CMD), 'pnpm')
+    fs.writeFileSync(
+      pnpm,
+      '#!/usr/bin/env bash\necho "pnpm $* image=$SMOKE_WEB_IMAGE prefix=$SMOKE_ASSET_PREFIX" >>"$(dirname "$0")/calls"\n',
+      { mode: 0o755 },
     )
-    const lines = [...runs.filter((r) => r !== '|'), ...blocks].map((l) => l.trim())
-    expect(lines.length).toBeGreaterThan(0)
-    const allowed = [
-      /^infra\/ci\.sh /,
-      /^pnpm install --frozen-lockfile/,
-      /^pnpm exec playwright install --with-deps /,
-      /^pnpm exec playwright install-deps /,
-      /^corepack enable$/,
-    ]
-    for (const line of lines)
-      expect(
-        allowed.some((re) => re.test(line)),
-        line,
-      ).toBe(true)
+    try {
+      const r = ci(['smoke', TAG], { ...registry, ...box.env })
+      expect(r.status, r.out).toBe(0)
+      expect(box.calls()).toContain(`pnpm smoke image=${P}/web:${TAG} prefix=prefix-of-${TAG}`)
+    } finally {
+      box.done()
+    }
   })
 
-  it('keeps the contract with the other scripts', () => {
-    const ci = fs.readFileSync(script, 'utf8')
-    // The deploy tag is the release the images were built with, prune after deploy.
-    expect(ci).toContain('assets.sh" build-args "$release"')
-    expect(ci).toContain('assets.sh" prune --keep "$keep"')
-    expect(ci).toContain('./deploy.sh live-releases')
-    expect(ci).toContain('release_dir="$dir/releases/$release"')
-    expect(ci).toContain('assets.sh" upload "$WEB_IMAGE" "$release"')
-    // infra/ is copied, IMAGE_PREFIX set, a non-zero exit stops the script (set -e).
-    expect(ci).toContain("cd '$release_dir' && IMAGE_PREFIX='$p' ./deploy.sh deploy '$release'")
-    expect(ci).toMatch(/^set -euo pipefail$/m)
-    expect(text).toContain('playwright install --with-deps chromium')
-    expect(text).toContain('smoke/.output')
-    expect(text).toContain('if: failure()')
-    expect(text).toContain('infra/ci.sh check')
+  const published = { WEB_IMAGE: `${P}/web@sha256:${'a'.repeat(64)}` }
+
+  it('upload hands the published web digest and the release to the assets script', () => {
+    const box = sandbox()
+    try {
+      const r = ci(['upload', TAG], { ...registry, ...upload, ...published, ...box.env })
+      expect(r.status, r.out).toBe(0)
+      expect(box.calls()).toContain(`assets upload ${published.WEB_IMAGE} ${TAG}`)
+    } finally {
+      box.done()
+    }
   })
 
-  it('is actionlint clean (when actionlint is installed)', () => {
-    const r = spawnSync('actionlint', [file], { encoding: 'utf8' })
-    if (r.error) return // `infra/ci.sh check` lints the workflows in CI
-    expect(r.stdout + r.stderr).toBe('')
-    expect(r.status).toBe(0)
+  it('deploy copies infra/ to releases/<tag>, runs that deploy.sh, then prunes except the live releases', () => {
+    const box = sandbox()
+    try {
+      const r = ci(['deploy', TAG], { ...registry, ...deploy, ...server, ...box.env })
+      expect(r.status, r.out).toBe(0)
+      const calls = box.calls()
+      const dir = '/srv/atlas/infra/releases/' + TAG
+      const at = (needle: string) => calls.findIndex((c) => c.includes(needle))
+      expect(at(`mkdir -p '${dir}' && tar -xf - -C '${dir}'`)).toBeGreaterThan(-1)
+      const run = at(`cd '${dir}' && IMAGE_PREFIX='${P}' ./deploy.sh deploy '${TAG}'`)
+      expect(run).toBeGreaterThan(at('tar -xf -'))
+      expect(at('./deploy.sh live-releases')).toBeGreaterThan(run)
+      expect(calls.at(-1)).toBe(`assets prune --keep v1.2.2,${TAG}`)
+    } finally {
+      box.done()
+    }
+  })
+
+  it('deploy that fails on the server (after its own rollback) fails the build and prunes nothing', () => {
+    const box = sandbox({ failingDeploy: true })
+    try {
+      const r = ci(['deploy', TAG], { ...registry, ...deploy, ...server, ...box.env })
+      expect(r.status).not.toBe(0)
+      expect(box.calls().some((c) => c.startsWith('assets prune'))).toBe(false)
+    } finally {
+      box.done()
+    }
+  })
+
+  it('deploy prunes nothing when the server does not report the release as live', () => {
+    const box = sandbox({ liveReleases: 'v1.2.1\\nv1.2.2\\n' })
+    try {
+      const r = ci(['deploy', TAG], { ...registry, ...deploy, ...server, ...box.env })
+      expect(r.status).not.toBe(0)
+      expect(box.calls().some((c) => c.startsWith('assets prune'))).toBe(false)
+    } finally {
+      box.done()
+    }
   })
 })

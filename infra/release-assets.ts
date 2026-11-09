@@ -8,7 +8,7 @@
  * optional S3_REGION (default auto) and S3_FORCE_PATH_STYLE=true (MinIO).
  *
  * `upload` only ever PUTs. `prune` is the only code that deletes, and only whole releases.
- * Run from Node 24 directly (types are stripped); the only import is the AWS SDK.
+ * Run from Node 24 directly (types are stripped); it imports the AWS SDK and ./settings.ts.
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -19,9 +19,10 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3'
 
+import { RELEASE_NAME_PATTERN } from './settings.ts'
+
 export const RELEASES_PREFIX = 'releases/'
 export const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable'
-const RELEASE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/
 const DAY_MS = 86_400_000
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -47,7 +48,7 @@ const CONTENT_TYPES: Record<string, string> = {
 }
 
 function assertRelease(release: string) {
-  if (!RELEASE_PATTERN.test(release)) throw new Error(`Invalid release name: ${release}`)
+  if (!RELEASE_NAME_PATTERN.test(release)) throw new Error(`Invalid release name: ${release}`)
 }
 
 function walk(dir: string, base = dir): string[] {

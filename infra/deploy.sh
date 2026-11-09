@@ -136,7 +136,7 @@ lock() {
 
 # --- releases ---------------------------------------------------------------------------------
 
-valid_tag() { [[ "$1" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; }
+valid_tag() { valid_release_name "$1"; }
 
 # The live release: the last recorded one, else the tag of the running web container.
 current_release() {
@@ -166,17 +166,19 @@ app_services() { live_compose config --services | grep -vx migrate; }
 
 # Copies the tree <src> over <dst> and removes what <src> does not have. Each file is written
 # to a temporary name and renamed: the running deploy.sh in live/ keeps reading its old inode.
+# Returns 1 on the first failure. Callers use it on the left of `||`, where `set -e` is off, and
+# `exit` in a piped loop only leaves the loop's subshell, so every pipeline is checked itself.
 sync_tree() {
   local src="$1" dst="$2" f
-  mkdir -p "$dst"
-  (cd "$src" && find . -type d) | while IFS= read -r f; do mkdir -p "$dst/$f" || exit 1; done
+  mkdir -p "$dst" || return 1
+  (cd "$src" && find . -type d) | while IFS= read -r f; do mkdir -p "$dst/$f" || exit 1; done || return 1
   (cd "$src" && find . -type f) | while IFS= read -r f; do
     cp -p "$src/$f" "$dst/$f.deploy-tmp" || exit 1
     mv -f "$dst/$f.deploy-tmp" "$dst/$f" || exit 1
-  done
+  done || return 1
   (cd "$dst" && find . -type f) | while IFS= read -r f; do
     [[ -e "$src/$f" ]] || rm -f "$dst/$f" || exit 1
-  done
+  done || return 1
 }
 
 # Content checksum of config paths under live/ (empty if missing).

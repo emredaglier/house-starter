@@ -1,22 +1,24 @@
+// Repo guards (CODING_STANDARDS.md): what an owner must fill in is written down. They read the
+// parsed workflows, project.env, the README and the scripts' sources on purpose; none of them is
+// behaviour.
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { parseProjectEnv } from './settings'
+import { allStrings, loadWorkflow, workflowFiles } from './workflows'
 
 const infra = import.meta.dirname
 const read = (file: string) => fs.readFileSync(path.join(infra, file), 'utf8')
 const readme = read('README.md')
-const workflows = fs
-  .readdirSync(path.join(infra, '../.github/workflows'))
-  .filter((file) => file.endsWith('.yml'))
-  .map((file) => fs.readFileSync(path.join(infra, '../.github/workflows', file), 'utf8'))
-  .join('\n')
 
 describe('setup docs list what the owner fills in', () => {
+  // ADR-0005: the pipeline skips until the owner sets its secrets, so each one must be findable.
   it('names every secret and variable a workflow reads', () => {
     const names = new Set(
-      [...workflows.matchAll(/\b(?:secrets|vars)\.([A-Z][A-Z0-9_]*)/g)]
+      workflowFiles()
+        .flatMap((file) => allStrings(loadWorkflow(file)))
+        .flatMap((text) => [...text.matchAll(/\b(?:secrets|vars)\.([A-Z][A-Z0-9_]*)/g)])
         .map((m) => m[1]!)
         // Automatic: no secret to create.
         .filter((name) => name !== 'GITHUB_TOKEN'),
@@ -31,8 +33,9 @@ describe('setup docs list what the owner fills in', () => {
     for (const key of keys) expect(readme, key).toContain(`\`${key}\``)
   })
 
+  // ADR-0001: every per-project name comes from infra/project.env.
   it('has no hard-coded server folder in a script', () => {
-    // The names come from project.env; a leftover default would deploy under the wrong name.
+    // A leftover default would deploy under the wrong name.
     for (const file of [
       'compose.yaml',
       'compose.local.yaml',

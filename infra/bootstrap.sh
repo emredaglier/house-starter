@@ -3,7 +3,7 @@
 # Idempotent: safe to run again. See infra/README.md for inputs, steps and recovery.
 set -euo pipefail
 
-# Per-project names (APP_DIR, TS_HOSTNAME, TIMEZONE, PROJECT_NAME) come from infra/project.env.
+# Per-project names (APP_DIR, DATA_DIR, ENV_DIR, TS_HOSTNAME, TIMEZONE, PROJECT_NAME) come from infra/project.env.
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/project.sh"
 
@@ -384,8 +384,8 @@ EOF
 step_app_dir() {
   log "App directory $APP_DIR"
   run install -d -m 755 -o "$ADMIN_USER" -g "$ADMIN_USER" "$APP_DIR"
-  run install -d -m 750 -o "$ADMIN_USER" -g "$ADMIN_USER" "$APP_DIR/data"
-  run install -d -m 700 -o "$ADMIN_USER" -g "$ADMIN_USER" "$APP_DIR/env"
+  run install -d -m 750 -o "$ADMIN_USER" -g "$ADMIN_USER" "$DATA_DIR"
+  run install -d -m 700 -o "$ADMIN_USER" -g "$ADMIN_USER" "$ENV_DIR"
 }
 
 step_system_services() {
