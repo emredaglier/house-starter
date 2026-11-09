@@ -25,6 +25,8 @@
 //   SMOKE_EXTRA_SECRETS a JSON array of strings the secrets-in-bundle spec must not find. To see
 //                       that spec fail, name a string the page serves:
 //                       SMOKE_EXTRA_SECRETS='["Glow example"]' pnpm smoke -g "no server secret"
+//   SMOKE_BUILT_FILES   set by this script, not by you: a JSON file listing every script and stylesheet
+//                       of the image's `.next/static`, for the secrets-in-bundle spec
 //   SMOKE_KEEP=1        keep the temp dir and container for debugging
 //   SMOKE_OUTPUT_DIR    where traces, screenshots and the HTML report go (smoke/.output)
 import { spawn, spawnSync, type SpawnOptions } from 'node:child_process'
@@ -34,6 +36,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { loadSettings } from '../infra/settings.ts'
+import { builtFilePaths } from './secrets-scan.ts'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const env = process.env
@@ -50,6 +53,9 @@ const SECRETS = {
 }
 /** web never signs anything; its PAYLOAD_SECRET is its own, never the cms one. */
 const WEB_PAYLOAD_SECRET = 'smoke-only-web-payload-secret'
+
+/** Where the web image keeps its static files (infra/assets.sh reads the same folder). */
+const STATIC_IN_IMAGE = '/app/apps/web/.next/static'
 
 const log = (message: string) => console.log(`\n[smoke] ${message}`)
 
@@ -145,6 +151,21 @@ try {
   const baseUrl = `http://127.0.0.1:${portLine.stdout.trim().split('\n')[0]!.split(':').pop()}`
   await waitHealthy(`${baseUrl}/internal/health`)
 
+  // Every script and stylesheet the image holds, copied out of the running container (as
+  // infra/assets.sh upload does). The secrets spec reads them all: a lazily loaded chunk has no link
+  // in any page, so crawling from the pages alone would never reach it.
+  log('listing the built scripts and stylesheets of the image')
+  const staticDir = path.join(tmp, 'static')
+  await run('docker', ['cp', `${container}:${STATIC_IN_IMAGE}/.`, staticDir])
+  const builtFiles = builtFilePaths(
+    (fs.readdirSync(staticDir, { recursive: true }) as string[])
+      .filter((entry) => fs.statSync(path.join(staticDir, entry)).isFile())
+      .map((entry) => entry.split(path.sep).join('/')),
+  )
+  if (builtFiles.length === 0) throw new Error(`no script or stylesheet in ${STATIC_IN_IMAGE}`)
+  const builtFilesPath = path.join(tmp, 'built-files.json')
+  fs.writeFileSync(builtFilesPath, JSON.stringify(builtFiles))
+
   // Cache the page the live edit changes, so only the revalidate hook can refresh it.
   log('warming the cache, then saving through the Local API (revalidate hook -> container)')
   await fetch(`${baseUrl}/`)
@@ -184,6 +205,7 @@ try {
           WEB_PAYLOAD_SECRET,
           ...(JSON.parse(env.SMOKE_EXTRA_SECRETS ?? '[]') as string[]),
         ]),
+        SMOKE_BUILT_FILES: builtFilesPath,
         SMOKE_ASSET_PREFIX: assetPrefix,
         SMOKE_OUTPUT_DIR: outputDir,
       },
