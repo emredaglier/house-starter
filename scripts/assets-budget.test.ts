@@ -139,6 +139,19 @@ describe('isBudgeted', () => {
     expect(isBudgeted('docs/shot.png')).toBe(false)
     expect(isBudgeted('.scratch/x/shot.png')).toBe(false)
   })
+
+  it('exempts docs and .scratch at the top of the repo only, not a folder of that name inside an app', () => {
+    expect(isBudgeted('apps/web/public/docs/hero.jpg')).toBe(true)
+    expect(isBudgeted('packages/ui/docs/loop.mp4')).toBe(true)
+    expect(isBudgeted('apps/web/.scratch/shot.png')).toBe(true)
+    expect(isBudgeted('docsy/hero.jpg')).toBe(true)
+  })
+
+  it('exempts installed packages and build output wherever a workspace keeps them', () => {
+    expect(isBudgeted('apps/web/node_modules/x/a.png')).toBe(false)
+    expect(isBudgeted('packages/ui/node_modules/x/a.png')).toBe(false)
+    expect(isBudgeted('apps/cms/.next/static/a.png')).toBe(false)
+  })
 })
 
 describe('checkAssets', () => {

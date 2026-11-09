@@ -9,6 +9,7 @@ import { expect, test } from './fixtures.ts'
 import {
   EFFECT_PAGES,
   domFallbackProblems,
+  effectTried,
   faultsOf,
   recordFaults,
   withBrokenShaders,
@@ -25,6 +26,7 @@ for (const effect of EFFECT_PAGES) {
       await recordFaults(context)
       await withoutWebGL(context)
       const failures = await visit(effect.route)
+      await effectTried(page)
       expect(await domFallbackProblems(page, effect)).toEqual([])
       expect(failures).toEqual([])
       expect(await faultsOf(page)).toEqual([])
@@ -38,6 +40,7 @@ for (const effect of EFFECT_PAGES) {
       await recordFaults(context)
       await withBrokenShaders(context)
       const failures = await visit(effect.route)
+      await effectTried(page)
       expect(await domFallbackProblems(page, effect)).toEqual([])
       expect(failures).toEqual([])
       expect((await faultsOf(page)).map((fault) => fault.kind)).toContain('gl-error')

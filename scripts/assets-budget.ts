@@ -22,7 +22,10 @@ export const HEADER_BYTES = 256 * 1024
 
 const VIDEO = new Set(['.mp4', '.webm', '.mov'])
 const RASTER = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif'])
-const SKIPPED_PREFIXES = ['node_modules/', '.next/', 'docs/', '.scratch/']
+/** Never tracked content, wherever a workspace keeps it. */
+const SKIPPED_ANYWHERE = ['node_modules/', '.next/']
+/** Not shipped, so exempt, but only at the top of the repo: `apps/web/public/docs/` ships. */
+const SKIPPED_AT_ROOT = ['docs/', '.scratch/']
 const ICON_STEM = /^(icon|apple-icon|favicon)\d*$/
 
 export type AssetFile = { path: string; size: number; header: Uint8Array }
@@ -40,7 +43,10 @@ const stem = (path: string) => {
 
 /** Whether a tracked path is an image or a video the budget applies to (SVG is exempt). */
 export function isBudgeted(path: string): boolean {
-  if (SKIPPED_PREFIXES.some((prefix) => path.startsWith(prefix) || path.includes(`/${prefix}`))) {
+  if (
+    SKIPPED_AT_ROOT.some((prefix) => path.startsWith(prefix)) ||
+    SKIPPED_ANYWHERE.some((prefix) => path.startsWith(prefix) || path.includes(`/${prefix}`))
+  ) {
     return false
   }
   const ext = extname(path)

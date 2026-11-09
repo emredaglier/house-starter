@@ -391,6 +391,17 @@ esac`,
     }
   })
 
+  it('only build reads CI_TARGETS: a bad value does not stop any other command', () => {
+    expect(ci(['gate', 'upload'], { CI_TARGETS: 'docs' }).status).toBe(0)
+    const box = sandbox()
+    fakePnpm(box)
+    try {
+      expect(ci(['smoke', SHA], { ...registry, ...box.env, CI_TARGETS: 'docs' }).status).toBe(0)
+    } finally {
+      box.done()
+    }
+  })
+
   it('build refuses a target that is not an image of this repo, before it builds anything', () => {
     const box = sandbox()
     try {
@@ -427,19 +438,56 @@ esac`,
     }
   })
 
+  /** A fake `pnpm` that logs each argument in brackets, and the variables smoke hands over. */
+  const fakePnpm = (box: ReturnType<typeof sandbox>) =>
+    fs.writeFileSync(
+      path.join(path.dirname(box.env.ASSETS_CMD), 'pnpm'),
+      '#!/usr/bin/env bash\n' +
+        '{ printf "pnpm"; printf " [%s]" "$@"; echo " image=$SMOKE_WEB_IMAGE prefix=$SMOKE_ASSET_PREFIX"; } >>"$(dirname "$0")/calls"\n',
+      { mode: 0o755 },
+    )
+
   it('smoke asks the assets script for the prefix the built image was given', () => {
     // `pnpm smoke` itself is not run here: only what ci.sh hands to it is.
     const box = sandbox()
-    const pnpm = path.join(path.dirname(box.env.ASSETS_CMD), 'pnpm')
-    fs.writeFileSync(
-      pnpm,
-      '#!/usr/bin/env bash\necho "pnpm $* image=$SMOKE_WEB_IMAGE prefix=$SMOKE_ASSET_PREFIX" >>"$(dirname "$0")/calls"\n',
-      { mode: 0o755 },
-    )
+    fakePnpm(box)
     try {
-      const r = ci(['smoke', TAG], { ...registry, ...box.env })
+      const r = ci(['smoke', SHA], { ...registry, ...box.env })
       expect(r.status, r.out).toBe(0)
-      expect(box.calls()).toContain(`pnpm smoke image=${P}/web:${TAG} prefix=prefix-of-${TAG}`)
+      expect(box.calls()).toContain(`pnpm [smoke] image=${P}/web:${SHA} prefix=prefix-of-${SHA}`)
+    } finally {
+      box.done()
+    }
+  })
+
+  it('smoke runs the self-tests of the checks for a commit, and leaves them out for a release tag', () => {
+    // A tag runs the same checks on the page (accessibility, WebGL, secrets); the tests of the
+    // check code itself ran on the pull request and on main (ADR-0012).
+    const box = sandbox()
+    fakePnpm(box)
+    try {
+      const tag = ci(['smoke', TAG], { ...registry, ...box.env })
+      expect(tag.status, tag.out).toBe(0)
+      expect(box.calls().filter((c) => c.startsWith('pnpm '))).toEqual([
+        `pnpm [smoke] [--grep-invert] [check self-test] image=${P}/web:${TAG} prefix=prefix-of-${TAG}`,
+      ])
+    } finally {
+      box.done()
+    }
+  })
+
+  it('smoke passes extra arguments on, after the self-test filter on a tag', () => {
+    const box = sandbox()
+    fakePnpm(box)
+    try {
+      ci(['smoke', TAG, '-g', 'no server secret'], { ...registry, ...box.env })
+      ci(['smoke', SHA, '-g', 'no server secret'], { ...registry, ...box.env })
+      expect(box.calls().filter((c) => c.startsWith('pnpm '))).toEqual([
+        expect.stringContaining(
+          'pnpm [smoke] [--grep-invert] [check self-test] [-g] [no server secret] ',
+        ),
+        expect.stringContaining('pnpm [smoke] [-g] [no server secret] '),
+      ])
     } finally {
       box.done()
     }

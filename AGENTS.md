@@ -24,9 +24,9 @@ your task says to.
 
 ## Proof of work
 
-- Before you say a task is done, run `pnpm lint`, `pnpm typecheck` and `pnpm test`, and report each
-  result. A failure is reported with its output, never summarised away. Fix its cause: do not
-  loosen a test, a budget or a lint rule to make it pass.
+- Before you say a task is done, run `pnpm lint`, `pnpm typecheck`, `pnpm test` and
+  `pnpm check:assets`, and report each result. A failure is reported with its output, never
+  summarised away. Fix its cause: do not loosen a test, a budget or a lint rule to make it pass.
 - A check you could not run is reported as not run, never as passed. Code you could not execute
   (a Playwright spec, a shader) is unverified: say so, and say which command proves it.
 - A bug fix starts with a test or reproduction you have seen fail.
@@ -83,7 +83,7 @@ Each one is an ADR in `docs/adr/`; read the ADR before working against it.
 ## What CI checks
 
 Every pull request and push to `main` runs `check` and `browser` (ADR-0005, ADR-0012). Run the
-first three yourself; the rest need Docker and a browser, so the lead runs them.
+first two rows yourself; the rest need Docker and a browser, so the lead runs them.
 
 | Check                             | Command                            | Where                                                 |
 | --------------------------------- | ---------------------------------- | ----------------------------------------------------- |

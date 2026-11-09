@@ -8,18 +8,7 @@
 import AxeBuilder from '@axe-core/playwright'
 import type { Page } from '@playwright/test'
 
-/** What the page itself must have, read in the browser. */
-export type Structure = { lang: string; title: string; mains: number; h1s: number }
-
-/** The structure problems of a page, as sentences. Pure, so it is unit-tested. */
-export function structureProblems({ lang, title, mains, h1s }: Structure): string[] {
-  const problems: string[] = []
-  if (!lang.trim()) problems.push('<html> has no lang')
-  if (!title.trim()) problems.push('the page has no <title>')
-  if (mains !== 1) problems.push(`${mains} <main> landmarks, want 1`)
-  if (h1s !== 1) problems.push(`${h1s} <h1> headings, want 1`)
-  return problems
-}
+import { pageStructureProblems } from './structure.ts'
 
 /** Critical and serious axe violations and structure problems of the page now open; empty is clean. */
 export async function a11yProblems(page: Page): Promise<string[]> {
@@ -34,11 +23,5 @@ export async function a11yProblems(page: Page): Promise<string[]> {
           .map((node) => node.target.join(' '))
           .join(' | ')}]`,
     )
-  const structure = await page.evaluate((): Structure => ({
-    lang: document.documentElement.lang,
-    title: document.title,
-    mains: document.querySelectorAll('main, [role="main"]').length,
-    h1s: document.querySelectorAll('h1').length,
-  }))
-  return [...problems, ...structureProblems(structure)]
+  return [...problems, ...(await pageStructureProblems(page))]
 }
