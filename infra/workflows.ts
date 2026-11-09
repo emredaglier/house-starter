@@ -16,6 +16,7 @@ export type Step = {
   env?: Record<string, string>
   with?: Record<string, unknown>
   'continue-on-error'?: boolean
+  'timeout-minutes'?: number
 }
 
 export type Job = {
