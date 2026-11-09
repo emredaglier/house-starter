@@ -93,7 +93,7 @@ test.describe('check self-test: route sweep', () => {
     const problems = (await sweepProblems(p, visit, path('sweep-broken'))).join('\n')
     expect(problems).toContain('console error: boom')
     expect(problems).toContain('no <title>')
-    expect(problems).toContain('0 <h1> in main#main')
+    expect(problems).toContain('0 <h1> headings')
   })
 
   test('fails a route that answers a server error', async ({ page: p, visit }) => {
