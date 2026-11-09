@@ -63,9 +63,83 @@ export function findLeaks(files: Served[], secrets: string[]): Leak[] {
  * The build files (scripts and stylesheets) a document or script refers to, as paths under
  * `/_next/` (`static/chunks/a.js`), once each. The server writes them in markup as full URLs
  * (`<script src>`, with the CDN prefix) and in flight data and chunk loaders as bare paths, so one
- * pattern finds both; the query string (`?dpl=`) is dropped.
+ * pattern finds both; the query string (`?dpl=`) is dropped. The extension must end the name, so
+ * `data.json` is not `data.js`; `static/<buildId>/_buildManifest.js` is covered too.
+ *
+ * It cannot see a chunk whose URL the webpack runtime builds from parts
+ * (`"static/chunks/"+e+"."+{...}[e]+".js"`). `builtFilePaths` lists those from the image.
  */
 export function chunkPaths(text: string): string[] {
-  const found = text.matchAll(/static\/(?:chunks|css)\/[^"'\\\s)?<>]+?\.(?:js|css)/g)
+  const found = text.matchAll(
+    /static\/(?:(?:chunks|css)\/[^"'\\\s)?<>]+?|[\w-]+\/_(?:build|ssg)Manifest)\.(?:js|css)(?![\w.-])/g,
+  )
   return [...new Set([...found].map((match) => match[0]))]
+}
+
+/**
+ * Every script and stylesheet of a built `.next/static` folder, as paths under `/_next/`
+ * (`static/chunks/a.js`), sorted. `relative` are the folder's files relative to it, with `/`.
+ * Lazily loaded chunks appear here and in no page, so the scan reads the list, not only links.
+ */
+export function builtFilePaths(relative: string[]): string[] {
+  return relative
+    .filter((file) => /\.(?:js|css)$/.test(file))
+    .map((file) => `static/${file}`)
+    .sort()
+}
+
+/** One GET of a path on the site: the status and the body. `headers` ask for flight data (`RSC: 1`). */
+export type Fetcher = (
+  url: string,
+  headers?: Record<string, string>,
+) => Promise<{ status: number; text: string }>
+
+/** More than any page of a small site loads; a runaway crawl fails instead of running on. */
+const MAX_FILES = 1000
+
+/**
+ * Everything the browser would be served, as text: each route as HTML and as flight data (a server
+ * value handed to a client component lands there), every script and stylesheet they point at,
+ * transitively, and every built file in `builtFiles` (`builtFilePaths`), which catches chunks no page
+ * links to. `unserved` are the built files the site did not answer 200 for: a listing that reads
+ * nothing proves nothing, so the caller fails on them. A file only referenced from a page that is
+ * not served is not reported: the route sweep fails on a 404 the page itself loads.
+ */
+export async function collectServed(
+  get: Fetcher,
+  routes: string[],
+  builtFiles: string[],
+  maxFiles: number = MAX_FILES,
+): Promise<{ files: Served[]; unserved: string[] }> {
+  const files: Served[] = []
+  const unserved: string[] = []
+  const seen = new Set<string>()
+  const queue: string[] = []
+  const listed = new Set(builtFiles.map((file) => `/_next/${file}`))
+  const enqueue = (path: string) => {
+    const url = `/_next/${path}`
+    if (seen.has(url)) return
+    seen.add(url)
+    queue.push(url)
+  }
+  const take = async (url: string, headers?: Record<string, string>) => {
+    if (files.length >= maxFiles) {
+      throw new Error(`the crawl found more than ${maxFiles} files, more than it will read`)
+    }
+    const { status, text } = await get(url, headers)
+    files.push({ url: headers ? `${url} (flight data)` : url, text })
+    for (const chunk of chunkPaths(text)) enqueue(chunk)
+    return status
+  }
+
+  for (const route of routes) {
+    await take(route)
+    await take(route, { RSC: '1' })
+  }
+  for (const file of builtFiles) enqueue(file)
+  for (let next = queue.shift(); next; next = queue.shift()) {
+    const status = await take(next)
+    if (listed.has(next) && status !== 200) unserved.push(next)
+  }
+  return { files, unserved }
 }
