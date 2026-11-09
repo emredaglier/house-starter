@@ -1,38 +1,25 @@
-// The release gate (ADR-0005, CODING_STANDARDS.md "Smoke specs"). It runs against the built `web`
-// image on desktop Chromium only, and stays small: every public route loads with its content and no
-// console error or 404, not-found pages work, assets come from the CDN prefix, and the request-level
-// checks that need the built image (server HTML, no admin or API routes, the revalidate secret, no
-// cookies, one live CMS edit reaching the cached page). Do not add specs for look, motion or
-// interaction: the owner checks those by hand.
-//
-// A project adds each of its own public routes to PUBLIC_ROUTES below.
-import { expect, test as base, type APIResponse } from '@playwright/test'
+// The release gate (ADR-0005, ADR-0012, CODING_STANDARDS.md "Smoke specs"). It runs against the built
+// `web` image on desktop Chromium only, and stays small: the route sweep (every public page loads
+// with its content and no console error or 404), not-found pages, assets from the CDN prefix, and
+// the request-level checks that need the built image (server HTML, no admin or API routes, the
+// revalidate secret, no cookies, one live CMS edit reaching the cached page). The other gate specs
+// sit beside this one: a11y.spec.ts, secrets.spec.ts, webgl-fallback.spec.ts and
+// checks.selftest.spec.ts. Do not add specs for look, motion or interaction: the owner checks
+// those by hand.
+import { type APIResponse } from '@playwright/test'
 
 import { PLACEHOLDER_SITE } from '../packages/cms-config/src/seed/placeholder.ts'
-import {
-  consoleFailure,
-  pageErrorFailure,
-  requestFailure,
-  responseFailure,
-  type Expectation,
-} from './failure-rules.ts'
 import { LIVE_EDIT, UNKNOWN_PATH } from './fixture-data.ts'
-import { loadEverything } from './load-everything.ts'
-import { routeAssets } from './network.ts'
-
-const baseUrl = process.env.SMOKE_BASE_URL
-const revalidateSecret = process.env.SMOKE_REVALIDATE_SECRET
-if (!baseUrl || !revalidateSecret) {
-  throw new Error('Run through `pnpm smoke` (SMOKE_BASE_URL unset).')
-}
+import { expect, revalidateSecret, test } from './fixtures.ts'
+import { publicRoutes } from './routes.ts'
 
 /**
- * Every public route of the site, `/examples/glow` (noindex by design, but public) included. A
- * project lists all of its own and drops `/examples/glow` with the example effect. The checks that
- * need a route to be indexable only look at response headers, which a meta robots tag does not
+ * Every public route of the site, found from its pages (smoke/routes.ts), `/examples/glow` (noindex
+ * by design, but public) included. A project gives each dynamic page a sample URL there. The checks
+ * that need a route to be indexable only look at response headers, which a meta robots tag does not
  * change, so no route needs an exemption.
  */
-const PUBLIC_ROUTES = ['/', '/examples/glow']
+const PUBLIC_ROUTES = publicRoutes()
 
 /** Text as React writes it into server HTML. */
 const asHtml = (text: string) =>
@@ -55,58 +42,6 @@ const SEEDED = {
 }
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-type Visit = (path: string, status?: number) => Promise<string[]>
-
-const test = base.extend<{ visit: Visit }>({
-  // Requests may only go to the container and the (rewritten) asset prefix. Anything else is a
-  // failure, so a stray external request cannot hide in CI.
-  context: async ({ context }, provide) => {
-    await routeAssets(context)
-    await provide(context)
-  },
-
-  /** Opens a path and returns what went wrong on it: console errors, page errors, failed or 4xx requests. */
-  visit: async ({ page }, provide) => {
-    await provide(async (path, status = 200) => {
-      const failures: string[] = []
-      const expected: Expectation = { url: new URL(path, baseUrl).toString(), status }
-      page.on('console', (message) => {
-        const failure = consoleFailure(
-          { type: message.type(), text: message.text(), location: message.location().url },
-          expected,
-        )
-        if (failure) failures.push(failure)
-      })
-      page.on('pageerror', (error) => failures.push(pageErrorFailure(error)))
-      page.on('requestfailed', (request) => {
-        const failure = requestFailure({
-          url: request.url(),
-          reason: request.failure()?.errorText,
-          jsEnabled: true,
-        })
-        if (failure) failures.push(failure)
-      })
-      page.on('response', (response) => {
-        const request = response.request()
-        const failure = responseFailure(
-          {
-            url: response.url(),
-            status: response.status(),
-            isDocument: request.isNavigationRequest() && request.frame() === page.mainFrame(),
-          },
-          expected,
-        )
-        if (failure) failures.push(failure)
-      })
-
-      const response = await page.goto(path, { waitUntil: 'load' })
-      expect(response?.status(), `status of ${path}`).toBe(status)
-      await loadEverything(page)
-      return failures
-    })
-  },
-})
 
 const setCookies = (response: APIResponse) =>
   response
