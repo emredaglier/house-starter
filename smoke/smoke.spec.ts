@@ -164,7 +164,7 @@ test.describe('server HTML', () => {
     expect(html).toContain(SEEDED.intro)
     expect(html).toContain(`<title>${SEEDED.name}</title>`)
     expect(html).toContain(`<meta name="description" content="${SEEDED.description}"`)
-    expect(html).toMatch(/<html lang="en"/)
+    expect(html).toMatch(/<html[^>]*\slang="en"/)
     expect(html).toContain('<main')
   })
 })
