@@ -23,9 +23,16 @@ export const DYNAMIC_ROUTE_SAMPLES: Record<string, string> = {}
 
 const PAGE_FILE = /^page\.(?:tsx|ts|jsx|js)$/
 
-/** A folder that adds no URL segment of its own, or is no route at all. */
-const addsNoSegment = (name: string) =>
-  (name.startsWith('(') && name.endsWith(')')) || name.startsWith('@') || name.startsWith('_')
+/**
+ * A folder that is no route: a parallel slot (`@modal`), a private folder (`_components`) or an
+ * intercepting route (`(.)photo`, `(..)photo`, `(..)(..)photo`, `(...)photo`), which shows another
+ * URL's page in place. That page is found where it lives, so the interceptor is left out whole.
+ */
+const isNoRoute = (name: string) =>
+  name.startsWith('@') || name.startsWith('_') || /^\(\.{1,3}\)/.test(name)
+
+/** A route group, `(site)`: it organises folders and adds no URL segment. */
+const isGroup = (name: string) => name.startsWith('(') && name.endsWith(')')
 
 const isDynamic = (segment: string) => segment.includes('[')
 
@@ -37,11 +44,8 @@ export function discoverRoutes(appDir: string): Discovered {
   const walk = (dir: string, segments: string[]) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       if (entry.isDirectory()) {
-        if (entry.name.startsWith('@') || entry.name.startsWith('_')) continue
-        walk(
-          path.join(dir, entry.name),
-          addsNoSegment(entry.name) ? segments : [...segments, entry.name],
-        )
+        if (isNoRoute(entry.name)) continue
+        walk(path.join(dir, entry.name), isGroup(entry.name) ? segments : [...segments, entry.name])
       } else if (entry.isFile() && PAGE_FILE.test(entry.name)) {
         found.push(`/${segments.join('/')}`)
       }
