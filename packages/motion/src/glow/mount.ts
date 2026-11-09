@@ -36,7 +36,8 @@ const inert = (): GlowMount => ({
 })
 
 /**
- * Puts the example effect into `host`, in front of the host's own content. Call it from an effect
+ * Puts the example effect into `host`, behind the host's own content: the canvas is the host's
+ * first child and positioned, so content that must paint over it needs `position: relative`. Call it from an effect
  * and call `dispose` from the effect's cleanup: every run gets a fresh canvas and a fresh stage,
  * because a disposed or lost WebGL context cannot be reused (and React Strict Mode runs effects
  * twice). Without WebGL2, or when the effect fails, the host is left exactly as it was.

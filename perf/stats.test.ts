@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { seeded } from '../packages/motion/src/test-support.ts'
 import { framesFromTimestamps, summarizeFrames } from './stats.ts'
 
 describe('framesFromTimestamps', () => {
@@ -24,5 +25,16 @@ describe('summarizeFrames', () => {
   })
   it('returns zeros for no frames', () => {
     expect(summarizeFrames([])).toEqual({ frames: 0, p50Ms: 0, p95Ms: 0, maxMs: 0, droppedPct: 0 })
+  })
+  it('orders p50 <= p95 <= max and keeps the dropped share within 0..100, for any frames', () => {
+    const random = seeded(7)
+    for (let run = 0; run < 200; run++) {
+      const durations = Array.from({ length: 1 + Math.floor(random() * 120) }, () => random() * 200)
+      const s = summarizeFrames(durations)
+      expect(s.p50Ms).toBeLessThanOrEqual(s.p95Ms)
+      expect(s.p95Ms).toBeLessThanOrEqual(s.maxMs)
+      expect(s.droppedPct).toBeGreaterThanOrEqual(0)
+      expect(s.droppedPct).toBeLessThanOrEqual(100)
+    }
   })
 })

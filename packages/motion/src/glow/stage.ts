@@ -47,18 +47,30 @@ const compile = (gl: WebGL2RenderingContext, type: number, source: string): WebG
   if (!shader) return null
   gl.shaderSource(shader, source)
   gl.compileShader(shader)
-  return gl.getShaderParameter(shader, gl.COMPILE_STATUS) ? shader : null
+  if (gl.getShaderParameter(shader, gl.COMPILE_STATUS)) return shader
+  gl.deleteShader(shader)
+  return null
 }
+
+/** Hands the GPU context back now: browsers allow only a handful of live ones. */
+const releaseContext = (gl: WebGL2RenderingContext) =>
+  gl.getExtension('WEBGL_lose_context')?.loseContext?.()
 
 const link = (gl: WebGL2RenderingContext): WebGLProgram | null => {
   const vs = compile(gl, gl.VERTEX_SHADER, VERTEX_SOURCE)
   const fs = compile(gl, gl.FRAGMENT_SHADER, FRAGMENT_SOURCE)
-  const program = gl.createProgram()
-  if (!vs || !fs || !program) return null
-  gl.attachShader(program, vs)
-  gl.attachShader(program, fs)
-  gl.linkProgram(program)
-  return gl.getProgramParameter(program, gl.LINK_STATUS) ? program : null
+  const program = vs && fs ? gl.createProgram() : null
+  if (program && vs && fs) {
+    gl.attachShader(program, vs)
+    gl.attachShader(program, fs)
+    gl.linkProgram(program)
+  }
+  // The shaders are only needed until the program is linked, whether or not it linked.
+  if (vs) gl.deleteShader(vs)
+  if (fs) gl.deleteShader(fs)
+  if (program && gl.getProgramParameter(program, gl.LINK_STATUS)) return program
+  if (program) gl.deleteProgram(program)
+  return null
 }
 
 /** Everything a context owns: gone with a lost context, built again for a restored one. */
@@ -115,6 +127,7 @@ export const createGlowStage = (
   const first = build(gl)
   if (!first) {
     reportMotionFault('gl-error', FAULT_DETAIL)
+    releaseContext(gl)
     return inert()
   }
   const context = gl
@@ -174,8 +187,9 @@ export const createGlowStage = (
     }
     gpu = rebuilt
     ok = true
-    context.viewport(0, 0, canvas.width, canvas.height)
-    if (last) draw(last)
+    // The layout may have changed while the context was gone: size from it now, not from the
+    // width and height the canvas had before, then redraw the last state.
+    resize()
   }
   canvas.addEventListener('webglcontextlost', onLost)
   canvas.addEventListener('webglcontextrestored', onRestored)
@@ -198,8 +212,7 @@ export const createGlowStage = (
       canvas.removeEventListener('webglcontextrestored', onRestored)
       context.deleteBuffer(gpu.buffer)
       context.deleteProgram(gpu.program)
-      // Hand the GPU context back now: browsers allow only a handful of live ones.
-      context.getExtension('WEBGL_lose_context')?.loseContext?.()
+      releaseContext(context)
     },
   }
 }

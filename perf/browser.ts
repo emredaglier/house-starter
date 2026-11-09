@@ -21,6 +21,8 @@ const INIT_SCRIPT = `
 })();
 `
 
+export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
 export async function newInstrumentedPage(context: BrowserContext): Promise<Page> {
   await context.addInitScript(INIT_SCRIPT)
   return context.newPage()

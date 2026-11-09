@@ -2,12 +2,10 @@
 // have no GPU, so the numbers are only meaningful relative to an earlier run on the same machine.
 import { chromium, webkit, type Page } from '@playwright/test'
 
-import { newInstrumentedPage, startFrames, stopFrames } from './browser.ts'
+import { newInstrumentedPage, sleep, startFrames, stopFrames } from './browser.ts'
 import type { FrameResult } from './budget.ts'
 import { SCENARIOS, skipReason, type Scenario, type Step } from './scenarios.ts'
 import { framesFromTimestamps, summarizeFrames } from './stats.ts'
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 async function box(page: Page, selector: string) {
   const b = await page.locator(selector).first().boundingBox()

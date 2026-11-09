@@ -26,8 +26,13 @@ if (!baseUrl || !revalidateSecret) {
   throw new Error('Run through `pnpm smoke` (SMOKE_BASE_URL unset).')
 }
 
-/** Every public route of the site. The placeholder page has one; a project lists all of its own. */
-const PUBLIC_ROUTES = ['/']
+/**
+ * Every public route of the site, `/examples/glow` (noindex by design, but public) included. A
+ * project lists all of its own and drops `/examples/glow` with the example effect. The checks that
+ * need a route to be indexable only look at response headers, which a meta robots tag does not
+ * change, so no route needs an exemption.
+ */
+const PUBLIC_ROUTES = ['/', '/examples/glow']
 
 /** Text as React writes it into server HTML. */
 const asHtml = (text: string) =>

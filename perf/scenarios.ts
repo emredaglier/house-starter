@@ -28,6 +28,13 @@ export type Scenario = {
   steps: Step[]
 }
 
+/**
+ * The page the idle-CPU check opens: one that runs a decorative loop. `null` when the project has
+ * none, and the check is then skipped with a notice. A project that drops the example effect
+ * points this at its own loop's page, or sets it to `null`.
+ */
+export const IDLE_PATH: string | null = '/examples/glow'
+
 export const SCENARIOS: Scenario[] = [
   {
     id: 'glow-sweep',

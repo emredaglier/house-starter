@@ -2,13 +2,13 @@
 export type LenisLike = {
   stop: () => void
   start: () => void
-  /** Present on a real Lenis; the lightbox jumps the page behind it with it. */
+  /** Present on a real Lenis; a modal can jump the page behind it with it. */
   scrollTo?: (target: number, options?: { immediate?: boolean; force?: boolean }) => void
 }
 
 let active: LenisLike | null = null
 
-/** Registers the page's Lenis (album pages). Replaces any earlier one. */
+/** Registers the page's Lenis (a page that scrolls with Lenis). Replaces any earlier one. */
 export const registerLenis = (lenis: LenisLike): void => {
   active = lenis
 }
@@ -20,6 +20,6 @@ export const unregisterLenis = (lenis: LenisLike): void => {
 
 export const getActiveLenis = (): LenisLike | null => active
 
-/** Lenis ignores `overflow: hidden`, so a scroll lock (menu, lightbox) must stop it too. */
+/** Lenis ignores `overflow: hidden`, so a scroll lock (menu, modal) must stop it too. */
 export const stopActiveLenis = (): void => active?.stop()
 export const startActiveLenis = (): void => active?.start()

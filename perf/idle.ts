@@ -4,20 +4,23 @@
 // WebKit has no CDP metrics.
 import { chromium } from '@playwright/test'
 
-import { newInstrumentedPage, rafCalls } from './browser.ts'
+import { newInstrumentedPage, rafCalls, sleep } from './browser.ts'
 import type { IdleResult } from './budget.ts'
+import { IDLE_PATH } from './scenarios.ts'
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-
-/** The page the loop runs on: the example effect's page. */
-const IDLE_PATH = '/examples/glow'
 /** The idle timeout the page is given (the `__HOUSE_IDLE_MS__` test hook of packages/motion). */
 const IDLE_TIMEOUT_MS = 2000
 /** Wait after load so the idle timeout has elapsed before sampling. */
 const SETTLE_MS = 6000
 const SAMPLE_SECONDS = 5
 
-export async function runIdle(baseUrl: string): Promise<IdleResult> {
+/** The idle check's result; `path` is where the loop runs (`IDLE_PATH` in scenarios.ts). */
+export async function runIdle(baseUrl: string, path: string | null = IDLE_PATH): Promise<IdleResult> {
+  if (path === null) {
+    const reason = 'idle: no decorative loop page is configured (IDLE_PATH in perf/scenarios.ts)'
+    console.log(`[perf] skipped: ${reason}`)
+    return { status: 'skipped', reason }
+  }
   const browser = await chromium.launch()
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } })
@@ -25,7 +28,7 @@ export async function runIdle(baseUrl: string): Promise<IdleResult> {
     const page = await newInstrumentedPage(context)
     const cdp = await context.newCDPSession(page)
     await cdp.send('Performance.enable')
-    await page.goto(`${baseUrl}${IDLE_PATH}`, { waitUntil: 'load' })
+    await page.goto(`${baseUrl}${path}`, { waitUntil: 'load' })
     await sleep(SETTLE_MS)
 
     const taskSeconds = async () => {
