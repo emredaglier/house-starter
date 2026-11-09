@@ -20,6 +20,7 @@ export type Step = {
 }
 
 export type Job = {
+  name?: string
   needs?: string | string[]
   if?: string
   permissions?: Record<string, string>
