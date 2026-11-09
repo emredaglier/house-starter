@@ -16,5 +16,4 @@ A server set up by hand drifts, and unattended restarts and reboots happen at un
 - No builds on the server.
 
 ## Consequences
-Rebuilding a server is the bootstrap script plus a deploy. The scripts themselves arrive with the
-infra ticket.
+Rebuilding a server is the bootstrap script plus a deploy. The scripts are in `infra/`.

@@ -13,5 +13,5 @@ R2 has no versioning, so deleting an image in the admin would destroy the file p
   by hand, and the job itself still never deletes.
 
 ## Consequences
-The library stays far under the free tier. The media collection and the jobs arrive with the infra
-ticket and the first project with uploads.
+The library stays far under the free tier. The backup job and the bucket settings are in
+`.github/workflows/` and `infra/`; the media collection arrives with the first project with uploads.
