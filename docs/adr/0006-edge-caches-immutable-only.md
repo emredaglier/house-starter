@@ -16,5 +16,6 @@ inject or change scripts.
 - The settings are applied by a script with an API token and documented in the repo.
 
 ## Consequences
-The origin serves every HTML request from Next's prerender cache, which is cheap for a site this
-size.
+Pages are rendered per request (`force-dynamic`) from data cached with `unstable_cache` and tagged,
+so a save in the CMS invalidates exactly what changed and publishing needs no CDN purge. The origin
+serves HTML from that cache, which is cheap for a site this size.

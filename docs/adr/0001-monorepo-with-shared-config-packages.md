@@ -10,7 +10,8 @@ follow.
 
 ## Decision
 - One repo, pnpm workspaces: `apps/web`, `apps/cms`, `packages/cms-config`, `packages/motion`,
-  `packages/ui`, `infra/`. No Turborepo.
+  `packages/ui`, and later `infra/`. No Turborepo. `infra/` does not exist in the starter yet: it
+  arrives with ticket 02.
 - `packages/ui` starts as an empty shell: no tokens, fonts, colours or components. Each project
   fills it with its own design. `packages/motion` starts with plumbing only; the effects library
   starts empty and grows as projects finish.

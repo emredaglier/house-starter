@@ -41,7 +41,10 @@ pnpm --filter @house/cms dev   # the admin on http://localhost:3001/admin
 ## Starting a project from the template
 
 1. Create the project repo from the template.
-2. Rename the `@house/*` scope in every `package.json`, import and `transpilePackages` list.
+2. Rename the `@house/*` scope in every `package.json`, import and `transpilePackages` list. Also
+   rename the `house:motion-fault` event (`packages/motion/src/fault.ts`), the email adapter's
+   `defaultFromName` (`packages/cms-config/src/config.ts`) and the `'Project name'` title in
+   `apps/web/src/app/layout.tsx`.
 3. Replace `packages/cms-config/src/seed/placeholder.ts`, the Site global and the home page with the
    project's content model.
 4. Fill `packages/ui` with the project's design (tokens, fonts in `packages/ui/fonts.ts`).
