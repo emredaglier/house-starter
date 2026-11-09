@@ -4,5 +4,5 @@
     "types": ["node"],
     "allowImportingTsExtensions": true
   },
-  "include": ["scripts", "vitest.config.ts"]
+  "include": ["scripts", "perf", "vitest.config.ts"]
 }
