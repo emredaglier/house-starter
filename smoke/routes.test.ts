@@ -51,6 +51,22 @@ describe('discoverRoutes', () => {
     expect(discoverRoutes(app).static).toEqual(['/about'])
   })
 
+  it('leaves out intercepting routes, which show another URL in place and are no page of their own', () => {
+    page('feed/photo/[id]')
+    page('feed/(.)photo/[id]')
+    page('feed/(..)photo/[id]')
+    page('feed/(..)(..)photo')
+    page('feed/(...)photo')
+    page('feed/(.)gallery', 'default.tsx')
+    expect(discoverRoutes(app)).toEqual({ static: [], dynamic: ['/feed/photo/[id]'] })
+  })
+
+  it('still takes a route group for no segment, and a folder that only starts like one for a segment', () => {
+    page('(site)/work')
+    page('(a)b/c')
+    expect(discoverRoutes(app).static).toEqual(['/(a)b/c', '/work'])
+  })
+
   it('finds nothing in a folder that is missing, so the caller can fail instead of sweeping nothing', () => {
     expect(discoverRoutes(path.join(app, 'nope'))).toEqual({ static: [], dynamic: [] })
   })
