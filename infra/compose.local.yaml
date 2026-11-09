@@ -37,7 +37,7 @@ services:
   s3mock:
     image: adobe/s3mock:latest
     environment:
-      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: ${PROJECT_NAME}-db-backups
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: ${R2_DB_BACKUP_BUCKET:-${PROJECT_NAME}-db-backups}
     healthcheck:
       test: ['CMD', 'bash', '-c', 'exec 3<>/dev/tcp/127.0.0.1/9090']
       interval: 5s
@@ -47,7 +47,7 @@ services:
   litestream:
     env_file: !reset []
     environment:
-      LITESTREAM_BUCKET: ${PROJECT_NAME}-db-backups
+      LITESTREAM_BUCKET: ${R2_DB_BACKUP_BUCKET:-${PROJECT_NAME}-db-backups}
       LITESTREAM_ENDPOINT: http://s3mock:9090
       LITESTREAM_REGION: us-east-1
       LITESTREAM_ACCESS_KEY_ID: local

@@ -31,7 +31,9 @@ describe('scenario registry', () => {
   })
 
   it('every frame budget names a scenario that exists, so deleting a scenario means deleting its budget', () => {
-    const budget = JSON.parse(readFileSync(resolve(import.meta.dirname, 'perf-budget.json'), 'utf8'))
+    const budget = JSON.parse(
+      readFileSync(resolve(import.meta.dirname, 'perf-budget.json'), 'utf8'),
+    )
     const ids = new Set(SCENARIOS.map((s) => s.id))
     for (const key of Object.keys(budget.frames ?? {})) {
       expect(ids.has(key.slice(key.indexOf('/') + 1)), `${key}: no such scenario`).toBe(true)

@@ -47,6 +47,14 @@ describe('infra/assets.sh', () => {
     )
   })
 
+  it('prints the asset prefix of a release, the same one the build args carry', async () => {
+    const prefix = await run(['asset-prefix', 'abc123'])
+    expect(prefix.code).toBe(0)
+    expect(prefix.out.trim()).toBe('https://cdn.atlas.studio/releases/abc123')
+    const args = await run(['build-args', 'abc123'])
+    expect(args.out).toContain(`ASSET_PREFIX=${prefix.out.trim()} `)
+  })
+
   it('prune --dry-run lists releases without deleting', async () => {
     stub.objects.set('releases/old/_next/static/a.js', {
       body: Buffer.from('x'),

@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { loadSettings, parseProjectEnv, resolveSettings } from './settings'
+import { loadSettings, parseProjectEnv, RELEASE_NAME_PATTERN, resolveSettings } from './settings'
 
 const infra = import.meta.dirname
 
@@ -20,6 +20,7 @@ function shellSettings(file: string, env: Record<string, string> = {}) {
     'APP_DIR',
     'ENV_DIR',
     'DATA_DIR',
+    'CERTS_DIR',
     'STATE_DIR',
     'R2_MEDIA_BUCKET',
     'R2_DB_BACKUP_BUCKET',
@@ -67,6 +68,7 @@ describe('resolveSettings', () => {
       appDir: '/opt/atlas',
       envDir: '/opt/atlas/env',
       dataDir: '/opt/atlas/data',
+      certsDir: '/opt/atlas/certs',
       stateDir: '/opt/atlas/state',
       mediaBucket: 'atlas-media',
       dbBackupBucket: 'atlas-db-backups',
@@ -121,6 +123,7 @@ describe('infra/project.sh agrees with settings.ts', () => {
       APP_DIR: ts.appDir,
       ENV_DIR: ts.envDir,
       DATA_DIR: ts.dataDir,
+      CERTS_DIR: ts.certsDir,
       STATE_DIR: ts.stateDir,
       R2_MEDIA_BUCKET: ts.mediaBucket,
       R2_DB_BACKUP_BUCKET: ts.dbBackupBucket,
@@ -162,5 +165,26 @@ describe('infra/project.sh agrees with settings.ts', () => {
     expect(run('example.com').status).not.toBe(0)
     expect(run('example.com').stderr).toContain('project.env')
     expect(run('atlas.studio').stdout).toContain('configured')
+  })
+})
+
+describe('release names', () => {
+  const accepted = ['v1.2.3', 'v1.2.3-rc.1', 'a'.repeat(100), '0a1b2c3', 'release_2', 'x']
+  const rejected = ['', '../x', 'v1/2', '-v1', '.v1', '_v1', 'v 1', 'a'.repeat(101), 'v1;ls', 'é']
+  const shellAccepts = (name: string) =>
+    spawnSync('bash', ['-c', `. "${infra}/project.sh"; valid_release_name "$1"`, '_', name], {
+      env: { PATH: process.env.PATH ?? '', PROJECT_NAME: 'atlas', DOMAIN: 'atlas.studio' },
+    }).status === 0
+
+  // deploy.sh and ci.sh call the shell function; release-assets.ts uses the TypeScript pattern.
+  it('project.sh and settings.ts accept and reject the same names', () => {
+    for (const name of accepted) {
+      expect(shellAccepts(name), name).toBe(true)
+      expect(RELEASE_NAME_PATTERN.test(name), name).toBe(true)
+    }
+    for (const name of rejected) {
+      expect(shellAccepts(name), name).toBe(false)
+      expect(RELEASE_NAME_PATTERN.test(name), name).toBe(false)
+    }
   })
 })

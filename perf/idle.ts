@@ -15,7 +15,10 @@ const SETTLE_MS = 6000
 const SAMPLE_SECONDS = 5
 
 /** The idle check's result; `path` is where the loop runs (`IDLE_PATH` in scenarios.ts). */
-export async function runIdle(baseUrl: string, path: string | null = IDLE_PATH): Promise<IdleResult> {
+export async function runIdle(
+  baseUrl: string,
+  path: string | null = IDLE_PATH,
+): Promise<IdleResult> {
   if (path === null) {
     const reason = 'idle: no decorative loop page is configured (IDLE_PATH in perf/scenarios.ts)'
     console.log(`[perf] skipped: ${reason}`)

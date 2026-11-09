@@ -15,6 +15,9 @@ export function parseProjectEnv(text: string): Record<string, string> {
   return values
 }
 
+/** A release name (an image tag, a folder on the CDN). infra/project.sh has the same pattern. */
+export const RELEASE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/
+
 export type ProjectSettings = {
   projectName: string
   domain: string
@@ -25,6 +28,7 @@ export type ProjectSettings = {
   appDir: string
   envDir: string
   dataDir: string
+  certsDir: string
   stateDir: string
   mediaBucket: string
   dbBackupBucket: string
@@ -64,6 +68,7 @@ export function resolveSettings(
     appDir,
     envDir: read('ENV_DIR') ?? `${appDir}/env`,
     dataDir: read('DATA_DIR') ?? `${appDir}/data`,
+    certsDir: read('CERTS_DIR') ?? `${appDir}/certs`,
     stateDir: read('STATE_DIR') ?? `${appDir}/state`,
     mediaBucket: read('R2_MEDIA_BUCKET') ?? `${projectName}-media`,
     dbBackupBucket: read('R2_DB_BACKUP_BUCKET') ?? `${projectName}-db-backups`,

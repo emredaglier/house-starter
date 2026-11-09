@@ -227,6 +227,7 @@ describe('infra/deploy.sh', () => {
 
   it('rejects a bad tag and an unknown command', async () => {
     expect((await run(['deploy', '../x'])).code).not.toBe(0)
+    expect((await run(['deploy', 'a'.repeat(101)])).code).not.toBe(0)
     expect((await run(['deploy'])).code).not.toBe(0)
     expect((await run(['nope'])).code).not.toBe(0)
     expect(calls()).toEqual([''])
@@ -423,6 +424,23 @@ describe('infra/deploy.sh', () => {
       expect(code).toBe(0)
       expect(live()).toBe('v1')
       expect(liveFile('compose.yaml')).toBe('# compose of v1\n')
+      expect(liveFile('caddy/Caddyfile')).toBe('one\n')
+    })
+
+    it('a release config that cannot be copied fails the swap and rolls back, never starting it', async () => {
+      ship('v1', 'one\n')
+      await at('v1', ['deploy', 'v1'])
+      ship('v2', 'two\n')
+      // cp cannot read this file, so the config of v2 cannot be put in place.
+      fs.writeFileSync(`${infra()}/releases/v2/caddy/unreadable.caddy`, 'x\n', { mode: 0o000 })
+      fs.writeFileSync(`${dir}/calls`, '')
+      const { code, out } = await at('v2', ['deploy', 'v2'])
+      fs.chmodSync(`${infra()}/releases/v2/caddy/unreadable.caddy`, 0o644)
+      expect(code).not.toBe(0)
+      expect(out).toContain('failed its checks')
+      expect(ups().some((c) => c.startsWith('RELEASE=v2 '))).toBe(false)
+      expect(live()).toBe('v1')
+      expect(history()).toEqual(['v1'])
       expect(liveFile('caddy/Caddyfile')).toBe('one\n')
     })
 

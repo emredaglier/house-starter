@@ -226,7 +226,7 @@ ensure_media_custom_domain() {
   fi
 }
 
-# Fonts and the CSS-mask logo load cross-origin from the CDN host.
+# Fonts and other assets (a CSS mask image, say) load cross-origin from the CDN host.
 ensure_media_cors() {
   local b="$R2_MEDIA_BUCKET" desired current="[]"
   desired="$(jq -nc --arg main "$MAIN_DOMAIN" '[{
@@ -251,7 +251,8 @@ ensure_media_cors() {
 # Soft delete (ADR-0009): cms moves a deleted photo to "$TRASH_PREFIX<key>"; this rule expires
 # those objects 30 days later (the copy resets the object's age, so it counts from the move).
 # R2 lifecycle rules match by key prefix only, not tags, hence a prefix. Keep TRASH_PREFIX in sync
-# with TRASH_PREFIX in packages/cms-config/src/storage.ts. This script owns the bucket's whole
+# with the trash prefix of the media collection's delete hook (it arrives with the first project
+# that has uploads, ADR-0009). This script owns the bucket's whole
 # lifecycle rule list (PUT replaces it). The backup bucket never gets a delete rule.
 TRASH_PREFIX="${TRASH_PREFIX:-trash/}"
 TRASH_MAX_AGE_SECONDS=2592000

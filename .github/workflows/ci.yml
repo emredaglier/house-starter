@@ -9,11 +9,10 @@
 #    published, uploaded to the CDN or deployed from anywhere but a release tag. HQ cuts the tag
 #    after the owner's launch approval; the repo restricts who may create `v*` tags.
 #
-# Shape: `check` runs next to `build` (the build needs nothing from `check`), so the slower job sets
-# the time, not the sum. Nothing is uploaded to the CDN, tagged `latest` or deployed unless `check`
-# passed too (`upload` needs it, and `push` and `deploy` need `upload`). Only the <tag> images of a
-# smoke-tested build reach GHCR before `check` finishes, and nothing deploys or pulls them by that
-# alone.
+# Shape: `build` needs `check`, so no image reaches GHCR from a tag that failed lint, types or unit
+# tests, or that is not on main (`check` verifies that first). The cost is a longer release run:
+# `check` and `build` are in sequence. Nothing is uploaded to the CDN, tagged `latest` or deployed
+# unless `check` passed too (`upload` needs it, and `push` and `deploy` need `upload`).
 #
 # The images never travel as an artifact (GitHub Free has 500 MB of artifact storage): `build`
 # pushes the smoke-tested images' <tag> to GHCR and hands their digests to the later jobs, which
@@ -79,6 +78,8 @@ jobs:
 
   build:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    # Publishing is irreversible: a tag that is not on main, or fails `check`, must push no image.
+    needs: check
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
@@ -144,7 +145,6 @@ jobs:
 
   upload:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    # `check` runs beside the build, so the delivery chain has to wait for it here.
     needs: [check, build]
     runs-on: ubuntu-24.04
     timeout-minutes: 15

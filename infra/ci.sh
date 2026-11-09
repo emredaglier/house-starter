@@ -17,9 +17,10 @@
 #   infra/ci.sh deploy <tag>          copy infra/ to the server as releases/<tag>/, run that
 #                                     deploy.sh, then prune static releases except the live ones
 #
-# <id> is a git sha (pull requests and main: build and smoke only) or a release tag. <tag> is a
-# release tag such as v1.2.3: only a tag is ever published, uploaded or deployed. The tag names the
-# images, the CDN folder (releases/<tag>) and the deploy, so a tag is never reused.
+# <id> is a release tag, or a git sha when run by hand (CI builds and smoke-tests a release tag
+# only: pull requests and main run `check` alone). <tag> is a release tag such as v1.2.3: only a
+# tag is ever published, uploaded or deployed. The tag names the images, the CDN folder
+# (releases/<tag>) and the deploy, so a tag is never reused.
 #
 # Env:
 #   IMAGE_PREFIX         default ghcr.io/<GITHUB_REPOSITORY_OWNER, lowercased>/<PROJECT_NAME>, else <PROJECT_NAME>
@@ -32,6 +33,7 @@
 #   WEB_IMAGE, CMS_IMAGE, MIGRATE_IMAGE  upload (web only), push: the digests publish printed
 #   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_HOST_KEY      deploy
 #   DEPLOY_DIR           directory on the server, default <APP_DIR>/infra
+#   ASSETS_CMD           the assets script, default infra/assets.sh (a test stands in for it)
 # Secrets are documented in infra/README.md ("CI secrets").
 set -euo pipefail
 
@@ -40,12 +42,18 @@ root="$(dirname "$here")"
 # shellcheck disable=SC1091
 . "$here/project.sh"
 targets=(web cms migrate)
+# Replaceable in tests, like deploy.sh's ASSETS_CMD.
+assets_cmd="${ASSETS_CMD:-$here/assets.sh}"
 ACTIONLINT_IMAGE="rhysd/actionlint:1.7.7"
 
 die() { echo "ci.sh: $*" >&2; exit 1; }
 log() { echo "[ci] $*"; }
 # A release tag: v1.2.3, optionally with a pre-release suffix (v1.2.3-rc.1).
-release_arg() { [[ "${1:-}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || die "usage: ci.sh $cmd <release tag, e.g. v1.2.3>"; }
+# It must also be a valid release name (project.sh), the pattern deploy.sh and assets.sh use.
+release_arg() {
+  if [[ "${1:-}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] && valid_release_name "$1"; then return 0; fi
+  die "usage: ci.sh $cmd <release tag, e.g. v1.2.3>"
+}
 # A build id: a git sha (pull requests, main) or a release tag.
 build_arg() { [[ "${1:-}" =~ ^[0-9a-f]{7,40}$ ]] || release_arg "$@"; }
 
@@ -110,7 +118,7 @@ case "$cmd" in
   build)
     build_arg "${1:-}"; release="$1"; p="$(prefix)"
     cd "$root"
-    read -ra args <<<"$("$here/assets.sh" build-args "$release")"
+    read -ra args <<<"$("$assets_cmd" build-args "$release")"
     cache=()
     if [ -n "${CI_BUILD_CACHE_DIR:-}" ]; then
       mkdir -p "$CI_BUILD_CACHE_DIR"
@@ -168,7 +176,7 @@ case "$cmd" in
     # The browser requests /_next/ from the CDN prefix the image was built with; the smoke runner
     # answers those requests from the container, so nothing leaves the machine.
     SMOKE_WEB_IMAGE="$(prefix)/web:$release" \
-      SMOKE_ASSET_PREFIX="$CDN_ORIGIN/releases/$release" \
+      SMOKE_ASSET_PREFIX="$("$assets_cmd" asset-prefix "$release")" \
       pnpm smoke
     ;;
 
@@ -197,7 +205,7 @@ case "$cmd" in
     registry_login
     export S3_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" S3_BUCKET="$R2_MEDIA_BUCKET"
     export S3_ACCESS_KEY_ID="$R2_MEDIA_WRITE_KEY_ID" S3_SECRET_ACCESS_KEY="$R2_MEDIA_WRITE_SECRET"
-    "$here/assets.sh" upload "$WEB_IMAGE" "$release"
+    "$assets_cmd" upload "$WEB_IMAGE" "$release"
     ;;
 
   push)
@@ -252,7 +260,7 @@ case "$cmd" in
     log "deploy succeeded, pruning old static releases (keeping $keep)"
     export S3_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" S3_BUCKET="$R2_MEDIA_BUCKET"
     export S3_ACCESS_KEY_ID="$R2_MEDIA_WRITE_KEY_ID" S3_SECRET_ACCESS_KEY="$R2_MEDIA_WRITE_SECRET"
-    "$here/assets.sh" prune --keep "$keep"
+    "$assets_cmd" prune --keep "$keep"
     ;;
 
   *)

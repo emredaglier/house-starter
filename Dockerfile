@@ -1,9 +1,12 @@
 # syntax=docker/dockerfile:1
 #
-# One Dockerfile, two images: `--target web` and `--target cms` (ADR-0004).
+# One Dockerfile, three images: `--target web`, `--target cms` and `--target migrate` (ADR-0004).
 # Built in CI for linux/amd64 (the VPS is x86); it also builds natively on an arm64 Mac.
-#   docker build --target web -t <project>-web:local .   (<project> = PROJECT_NAME in infra/project.env)
-#   docker build --target cms -t <project>-cms:local .
+# The names are the ones infra/compose.yaml runs with RELEASE unset (<project> = PROJECT_NAME in
+# infra/project.env):
+#   docker build --target web -t <project>/web:local .
+#   docker build --target cms -t <project>/cms:local .
+#   docker build --target migrate -t <project>/migrate:local .
 # Workspaces are selected by folder (`--filter ./apps/web`), so renaming the @house scope needs no
 # change here.
 

@@ -1,69 +1,103 @@
+// The nightly backup step (ADR-0009), run for real against a fake `rclone` that records its calls.
+// The workflow's structure (only copying commands, a pinned rclone) is guarded in workflows.test.ts.
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-const file = path.resolve(import.meta.dirname, '../.github/workflows/media-backup.yml')
-const text = fs.readFileSync(file, 'utf8')
-// Comments may mention the forbidden words; the commands may not.
-const code = text
-  .split('\n')
-  .filter((l) => !l.trim().startsWith('#'))
-  .join('\n')
+import { loadWorkflow, workflowsDir } from './workflows'
 
-describe('media backup workflow', () => {
-  it('only copies: no sync, delete or purge command or flag', () => {
-    expect(code).toMatch(/rclone copy /)
-    const forbidden = [
-      /\bsync\b/i,
-      /--delete/i,
-      /\bdelete(file|purge)?\b/i,
-      /\bpurge\b/i,
-      /\bmove\b/i,
-      /\brclone\s+(rm|rmdir|cleanup|dedupe|moveto|bisync)\b/i,
-      /\baws\s+s3\s+(rm|mv)\b/i,
-      /--remove/i,
-    ]
-    for (const re of forbidden) expect(code, String(re)).not.toMatch(re)
+const workflow = loadWorkflow(path.join(workflowsDir, 'media-backup.yml'))
+const step = Object.values(workflow.jobs)
+  .flatMap((job) => job.steps)
+  .find((s) => s.name === 'Copy new media and check the backup')
+if (!step?.run) throw new Error('media-backup.yml has no copy step')
+const script = step.run
+
+let dir: string
+beforeEach(() => {
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'media-backup-'))
+  fs.mkdirSync(`${dir}/bin`)
+})
+afterEach(() => fs.rmSync(dir, { recursive: true, force: true }))
+
+/** `failing` names the rclone command that exits 1; `copyLog` is what `copy` prints. */
+const run = (options: { failing?: string; copyLog?: string } = {}) => {
+  fs.writeFileSync(
+    `${dir}/bin/rclone`,
+    `#!/usr/bin/env bash
+echo "$*" >>"${dir}/calls"
+[[ "$1" == "$FAKE_FAILING" ]] && exit 1
+case "$1" in
+  lsf) printf 'a.jpg\\nb.jpg\\n' ;;
+  copy) echo "$FAKE_COPY_LOG" ;;
+esac
+exit 0
+`,
+    { mode: 0o755 },
+  )
+  fs.writeFileSync(`${dir}/calls`, '')
+  fs.mkdirSync(`${dir}/tmp`)
+  // GitHub runs a step's script with `bash -e -o pipefail`.
+  const result = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', script], {
+    encoding: 'utf8',
+    env: {
+      PATH: `${dir}/bin:${process.env.PATH ?? ''}`,
+      RUNNER_TEMP: `${dir}/tmp`,
+      GITHUB_STEP_SUMMARY: `${dir}/summary`,
+      SRC_BUCKET: 'atlas-media',
+      DST_BUCKET: 'atlas-backup',
+      FAKE_FAILING: options.failing ?? '',
+      FAKE_COPY_LOG: options.copyLog ?? '',
+    },
+  })
+  const calls = fs.readFileSync(`${dir}/calls`, 'utf8').trim().split('\n')
+  return { status: result.status, out: result.stdout + result.stderr, calls }
+}
+
+describe('the nightly media backup step', () => {
+  it('lists, copies and then checks, using only commands that cannot delete', () => {
+    const { status, calls } = run()
+    expect(status).toBe(0)
+    expect(calls.map((c) => c.split(' ')[0])).toEqual(['lsf', 'copy', 'check'])
+    for (const call of calls) expect(call).not.toMatch(/delete|remove|purge|sync|move/i)
   })
 
-  it('skips the static releases and the trash prefix', () => {
-    expect(code).toContain("--exclude '_next/**'")
-    expect(code).toContain("--exclude 'trash/**'")
-    expect(code).toMatch(/rclone copy [^\n]*"\$\{skip\[@\]\}"/)
-    expect(code).toMatch(/rclone lsf [^\n]*"\$\{skip\[@\]\}"/)
+  it('copies from the media bucket to the backup bucket, and never the static releases or the trash', () => {
+    const { calls } = run()
+    const copy = calls.find((c) => c.startsWith('copy '))!
+    expect(copy).toContain('SRC:atlas-media DST:atlas-backup')
+    expect(copy).toContain('--exclude _next/**')
+    expect(copy).toContain('--exclude trash/**')
+    // The listing the check relies on skips the same things.
+    const list = calls.find((c) => c.startsWith('lsf '))!
+    expect(list).toContain('--exclude _next/**')
+    expect(list).toContain('--exclude trash/**')
   })
 
-  // Ubuntu's rclone (1.60.1) got 501s from R2 on every upload's first attempt.
-  it('installs a pinned rclone release and verifies its checksum, not the apt package', () => {
-    expect(code).not.toMatch(/apt-get install[^\n]*rclone/)
-    expect(code).toMatch(/PINNED_RCLONE_VERSION: v\d+\.\d+\.\d+/)
-    expect(code).toMatch(/PINNED_RCLONE_SHA256: [0-9a-f]{64}/)
-    expect(code).toMatch(/sha256sum -c/)
-    // rclone reads every RCLONE_* variable as a flag; RCLONE_VERSION broke run 42053424724.
-    expect(code).not.toMatch(/^\s+RCLONE_(VERSION|SHA256):/m)
+  it('checks that every listed object is in the backup, one way, after the copy', () => {
+    const { calls } = run()
+    const check = calls.find((c) => c.startsWith('check '))!
+    expect(check).toContain('SRC:atlas-media DST:atlas-backup')
+    expect(check).toContain('--one-way')
+    expect(check).toMatch(/--files-from \S+listed\.txt/)
   })
 
-  it('checks after the copy that every object it listed is in the backup', () => {
-    const copy = code.indexOf('rclone copy ')
-    const check = code.indexOf('rclone check ')
-    expect(copy).toBeGreaterThan(-1)
-    expect(check).toBeGreaterThan(copy)
-    const line = code.slice(check).split('\n').slice(0, 2).join(' ')
-    expect(line).toMatch(/"SRC:\$\{SRC_BUCKET\}" "DST:\$\{DST_BUCKET\}" --one-way/)
-    expect(line).toMatch(/--files-from "\$RUNNER_TEMP\/listed\.txt"/)
-    expect(code).toMatch(/rclone lsf [^\n]*> "\$RUNNER_TEMP\/listed\.txt"/)
+  it('fails when the check finds a listed object missing from the backup', () => {
+    const { status } = run({ failing: 'check' })
+    expect(status).not.toBe(0)
   })
 
-  it('runs on a schedule with read-only repository permissions', () => {
-    expect(code).toMatch(/schedule:/)
-    expect(code).toMatch(/permissions:\n\s+contents: read/)
+  it('fails, without checking, when the copy fails', () => {
+    const { status, calls } = run({ failing: 'copy' })
+    expect(status).not.toBe(0)
+    expect(calls.some((c) => c.startsWith('check '))).toBe(false)
   })
 
-  it('is actionlint clean (when actionlint is installed)', () => {
-    const r = spawnSync('actionlint', [file], { encoding: 'utf8' })
-    if (r.error) return // not installed locally; `infra/ci.sh check` lints the workflows in CI
-    expect(r.stdout + r.stderr).toBe('')
-    expect(r.status).toBe(0)
+  it('warns in the run summary when the copy only succeeded on a retry', () => {
+    const { out } = run({ copyLog: 'ERROR : a.jpg: upload failed, retrying' })
+    expect(out).toContain('::warning title=Backup copy::')
+    expect(fs.readFileSync(`${dir}/summary`, 'utf8')).toContain('Backup copy')
   })
 })

@@ -5,13 +5,15 @@
 #   infra/assets.sh prune --keep <live>[,<previous live>] [--dry-run] [--max-age-days N]
 #                                                  delete old releases except the kept ones; the
 #                                                  kept list comes from `deploy.sh live-releases`
+#   infra/assets.sh asset-prefix <release>         print the URL prefix the release's static files are served from
 #   infra/assets.sh build-args <release>           print the docker build args for the release
 #
 # Upload runs BEFORE the new containers start (the deploy script calls it), so the
 # files are on the CDN before any HTML references them. It never deletes. Prune is separate.
-# Env: S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY (see apps/cms/.env.example),
-# CDN_ORIGIN (build-args only, from infra/project.env), STATIC_DIR_IN_IMAGE (default
-# /app/apps/web/.next/static).
+# Env: S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY (the R2 media bucket and its
+# write key; CI and deploy.sh set them, infra/release-assets.ts documents them. They are not in
+# apps/cms/.env.example because cms has no media collection yet), CDN_ORIGIN (build-args and
+# asset-prefix, from infra/project.env), STATIC_DIR_IN_IMAGE (default /app/apps/web/.next/static).
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,6 +23,8 @@ cli=(node "$here/release-assets.ts")
 static_in_image="${STATIC_DIR_IN_IMAGE:-/app/apps/web/.next/static}"
 
 die() { echo "assets.sh: $*" >&2; exit 1; }
+# Where a release's static files are served from: the one formula (build args and smoke use it).
+asset_prefix() { echo "$CDN_ORIGIN/releases/$1"; }
 
 case "${1:-}" in
   upload)
@@ -38,12 +42,17 @@ case "${1:-}" in
     shift
     exec "${cli[@]}" prune "$@"
     ;;
+  asset-prefix)
+    release="${2:-}"
+    [ -n "$release" ] || die "usage: assets.sh asset-prefix <release>"
+    asset_prefix "$release"
+    ;;
   build-args)
     release="${2:-}"
     [ -n "$release" ] || die "usage: assets.sh build-args <release>"
-    echo "--build-arg ASSET_PREFIX=$CDN_ORIGIN/releases/$release --build-arg DEPLOYMENT_ID=$release"
+    echo "--build-arg ASSET_PREFIX=$(asset_prefix "$release") --build-arg DEPLOYMENT_ID=$release"
     ;;
   *)
-    die "usage: assets.sh upload <web-image> <release> | prune [...] | build-args <release>"
+    die "usage: assets.sh upload <web-image> <release> | prune [...] | asset-prefix <release> | build-args <release>"
     ;;
 esac
