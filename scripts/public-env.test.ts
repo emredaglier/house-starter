@@ -1,4 +1,4 @@
-// Repo guard for the build-time half of "no secrets in the bundle" (the run-time half is
+// Tests of scripts/public-env.ts, and the repo guard for the build-time half of "no secrets in the bundle" (the run-time half is
 // smoke/secrets.spec.ts, which reads what the container serves). Next inlines `NEXT_PUBLIC_*` values
 // into browser code at build time, so a secret under that prefix ships to every visitor; and a
 // client component that reads a server variable is a sign a secret is about to be passed to it.
@@ -13,29 +13,9 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import { publicEnvProblems } from './public-env.ts'
+
 const root = path.resolve(import.meta.dirname, '..')
-
-/** `NEXT_PUBLIC_` followed by a name that says secret. A public API key is not named like this. */
-const PUBLIC_SECRET = /NEXT_PUBLIC_[A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PRIVATE)[A-Z0-9_]*/g
-const CLIENT_FILE = /\.(?:tsx?|jsx?|mjs)$/
-const USE_CLIENT = /^\s*(?:\/\/[^\n]*\n|\/\*[\s\S]*?\*\/\s*)*['"]use client['"]/
-const ENV_READ = /process\.env\.([A-Za-z0-9_]+)/g
-
-/** What is wrong in one file: a secret under the public prefix, or a server variable in a client file. */
-export function publicEnvProblems(file: string, text: string): string[] {
-  const problems = [...text.matchAll(PUBLIC_SECRET)].map(
-    (match) =>
-      `${file}: ${match[0]} is shipped to every visitor: a secret must not be NEXT_PUBLIC_`,
-  )
-  if (CLIENT_FILE.test(file) && USE_CLIENT.test(text)) {
-    for (const [, name] of text.matchAll(ENV_READ)) {
-      if (name !== 'NODE_ENV' && !name!.startsWith('NEXT_PUBLIC_')) {
-        problems.push(`${file}: a client component reads process.env.${name}, a server variable`)
-      }
-    }
-  }
-  return problems
-}
 
 describe('publicEnvProblems (on broken fixtures)', () => {
   it('finds a secret under the public prefix in any file', () => {
@@ -58,6 +38,57 @@ describe('publicEnvProblems (on broken fixtures)', () => {
     expect(
       publicEnvProblems('a.tsx', `/* x */\n'use client'\nprocess.env.REVALIDATE_SECRET`),
     ).toHaveLength(1)
+  })
+
+  it('knows a client component by its directive after comments and blank lines', () => {
+    const read = 'process.env.PAYLOAD_SECRET'
+    for (const head of [
+      `// a note\n\n'use client'\n`,
+      `// one\n// two\n\n\n"use client"\n`,
+      `/* licence */\n\n// note\n\n'use client'\n`,
+      `\n\n'use client'\n`,
+    ]) {
+      expect(publicEnvProblems('a.tsx', `${head}${read}`), head).toHaveLength(1)
+    }
+    // The directive must come first: after code it is only a string.
+    expect(publicEnvProblems('a.tsx', `import x from 'x'\n'use client'\n${read}`)).toEqual([])
+  })
+
+  it('finds a server variable read by bracket access', () => {
+    for (const read of [
+      `process.env['PAYLOAD_SECRET']`,
+      `process.env["PAYLOAD_SECRET"]`,
+      `process.env[ 'PAYLOAD_SECRET' ]`,
+      'process.env[`PAYLOAD_SECRET`]',
+    ]) {
+      expect(publicEnvProblems('a.tsx', `'use client'\nconst s = ${read}`), read).toEqual([
+        'a.tsx: a client component reads process.env.PAYLOAD_SECRET, a server variable',
+      ])
+    }
+    expect(
+      publicEnvProblems(
+        'a.tsx',
+        `'use client'\nprocess.env['NODE_ENV']; process.env['NEXT_PUBLIC_X']`,
+      ),
+    ).toEqual([])
+  })
+
+  it('finds a server variable read by destructuring process.env', () => {
+    const problems = (read: string) => publicEnvProblems('a.tsx', `'use client'\n${read}`)
+    const reads = (name: string) => [
+      `a.tsx: a client component reads process.env.${name}, a server variable`,
+    ]
+    expect(problems('const { PAYLOAD_SECRET } = process.env')).toEqual(reads('PAYLOAD_SECRET'))
+    expect(problems('const { PAYLOAD_SECRET: secret } = process.env')).toEqual(
+      reads('PAYLOAD_SECRET'),
+    )
+    expect(problems("const { PAYLOAD_SECRET = 'x' } = process.env")).toEqual(
+      reads('PAYLOAD_SECRET'),
+    )
+    expect(problems('const {\n  NODE_ENV,\n  REVALIDATE_SECRET,\n} = process.env')).toEqual(
+      reads('REVALIDATE_SECRET'),
+    )
+    expect(problems('const { NODE_ENV, NEXT_PUBLIC_SITE_URL: url } = process.env')).toEqual([])
   })
 
   it('lets a server file read what it needs, and a public key be public', () => {
