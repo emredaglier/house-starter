@@ -30,15 +30,25 @@ Test behaviour where a user or caller meets it, and keep `pnpm test` near a minu
     least privilege and skipping gates; ADR-0009: the media backup only copies);
   - `infra/docs.test.ts` (ADR-0005 and ADR-0001: every secret a workflow reads, every key of
     `project.env` is documented, and no script hard-codes a server folder);
-  - `infra/compose.test.ts` (ADR-0010: `migrate` and `cms` revalidate the same web instances).
+  - `infra/compose.test.ts` (ADR-0010: `migrate` and `cms` revalidate the same web instances);
+  - `scripts/public-env.test.ts` (ADR-0012: no secret under `NEXT_PUBLIC_`, no server variable read
+    in a client component).
 
 ## Smoke specs
 
-The release gate blocks deploys, so it stays small: every public route loads with its content and
-no console error or 404, redirects and not-found pages work, and assets come from the CDN prefix.
-It also holds the request-level checks that need the built image: server HTML and metadata, no
-admin or API routes, the revalidate secret, no cookies, and one live CMS edit reaching the cached
-pages. It runs on desktop Chromium only. Do not add specs for look, motion or interaction.
+The gate runs on every pull request, main and release tag (ADR-0012), so it stays small and
+deterministic: every public route loads with its content and no console error or 404, redirects and
+not-found pages work, and assets come from the CDN prefix. It also holds the request-level checks
+that need the built image (server HTML and metadata, no admin or API routes, the revalidate secret,
+no cookies, one live CMS edit reaching the cached pages) and the Satus-derived checks: axe
+accessibility on every route, a secrets-in-the-bundle scan, and the WebGL DOM-fallback check on each
+effect page. It runs on desktop Chromium only. Do not add specs for look, motion or interaction.
+
+- A check's decision logic is a pure module with a unit test on broken inputs (`smoke/secrets-scan.ts`,
+  `smoke/routes.ts`, `scripts/assets-budget.ts`); the browser part is proven on a deliberately
+  broken page in `smoke/checks.selftest.spec.ts`. A new check gets both.
+- A check never waits for a GPU or a timer: it takes WebGL away or breaks the shaders and looks at
+  what is left. A spec that needs the real GPU is not a gate spec.
 
 ## Database and Payload
 

@@ -5,6 +5,7 @@ CMS, shared CMS config, a minimal motion package and an empty UI package. It car
 tokens, fonts, colours, components or copy.
 
 - Decisions: [`docs/adr/`](docs/adr/). Coding standards: [`CODING_STANDARDS.md`](CODING_STANDARDS.md).
+  Rules for agents (house rules, proof of work, the playbook rule): [`AGENTS.md`](AGENTS.md).
 
 ## Setup
 
@@ -27,24 +28,25 @@ pnpm --filter @house/cms dev   # the admin on http://localhost:3001/admin
 
 ## Layout
 
-| Path                  | Role                                                                    |
-| --------------------- | ----------------------------------------------------------------------- |
-| `apps/web`            | Public Next.js site: Local API reads, no `/admin`, no `/api`            |
-| `apps/cms`            | Payload admin, the only writer of the database                          |
-| `packages/cms-config` | Payload collections, globals, access, revalidation, seed and migrations |
-| `packages/motion`     | Motion plumbing, the WebGL engine contract and one example effect       |
-| `packages/ui`         | Empty shell: head script and the single place fonts are defined         |
-| `infra`               | Docker Compose, Caddy, Litestream, deploy scripts, per-project settings |
-| `smoke`               | The release gate: Playwright against the built `web` image              |
+| Path                  | Role                                                                               |
+| --------------------- | ---------------------------------------------------------------------------------- |
+| `apps/web`            | Public Next.js site: Local API reads, no `/admin`, no `/api`                       |
+| `apps/cms`            | Payload admin, the only writer of the database                                     |
+| `packages/cms-config` | Payload collections, globals, access, revalidation, seed and migrations            |
+| `packages/motion`     | Motion plumbing, the WebGL engine contract and one example effect                  |
+| `packages/ui`         | Empty shell: head script and the single place fonts are defined                    |
+| `infra`               | Docker Compose, Caddy, Litestream, deploy scripts, per-project settings            |
+| `smoke`               | The browser gate on every PR and release: Playwright against the built `web` image |
+| `scripts`             | Repo checks: effects lint, the asset-weight budget (`pnpm check:assets`)           |
 
 `pnpm lint` also runs `scripts/check-effects.mjs`, which rejects SVG filters and
 `:active-view-transition-type()` (see the comment at the top of the script).
 
 ## Infra and releases
 
-[`infra/`](infra/README.md) carries the deploy backbone (Docker Compose and Caddy, CI-built images, health-gated deploys with automatic rollback, SQLite WAL with Litestream to R2, static files on R2 behind Cloudflare, admin and draft preview on Tailscale only). Every per-project name (domain, CDN host, buckets, server folder) comes from [`infra/project.env`](infra/project.env); the README there lists what the owner fills in. CI builds images and deploys only from a release tag (`v1.2.3`); pull requests and `main` run lint, typecheck and unit tests.
+[`infra/`](infra/README.md) carries the deploy backbone (Docker Compose and Caddy, CI-built images, health-gated deploys with automatic rollback, SQLite WAL with Litestream to R2, static files on R2 behind Cloudflare, admin and draft preview on Tailscale only). Every per-project name (domain, CDN host, buckets, server folder) comes from [`infra/project.env`](infra/project.env); the README there lists what the owner fills in. CI builds images and deploys only from a release tag (`v1.2.3`); pull requests and `main` run lint, the asset-weight budget, typecheck and unit tests, and the browser checks against the built `web` image (ADR-0012).
 
-`pnpm smoke` is the release gate (it needs Docker and a Playwright Chromium; see "Smoke gate" in `infra/README.md`). Workers do not run it: the lead runs it once, after the workers finish.
+`pnpm smoke` is the browser gate: the route sweep, accessibility, secrets in the bundle, the WebGL DOM fallback and the request-level checks (it needs Docker and a Playwright Chromium; see "Smoke gate" in `infra/README.md`). Workers do not run it: the lead runs it once, after the workers finish.
 
 ## Perf
 
@@ -81,7 +83,8 @@ run it again with the change and compare.
    Delete the example effect you do not keep. Every place that names it:
    - `packages/motion/src/glow` and its `@house/motion/glow` export in `packages/motion/package.json`;
    - `apps/web/src/app/examples/glow`;
-   - `/examples/glow` in `PUBLIC_ROUTES` in `smoke/smoke.spec.ts`;
+   - `/examples/glow` in `EFFECT_PAGES` in `smoke/webgl.ts` (its page is found by the route sweep
+     on its own, and goes with the folder);
    - the `glow-sweep` scenario and `IDLE_PATH` in `perf/scenarios.ts` (point `IDLE_PATH` at the
      project's own looping page, or set it to `null` to skip the idle check);
    - the `glow-sweep` keys in `perf/perf-budget.json` (a test fails while a budget names a missing
@@ -91,7 +94,6 @@ run it again with the change and compare.
 4. Fill `packages/ui` with the project's design (tokens, fonts in `packages/ui/fonts.ts`).
 5. Keep `scripts/repo-guard.test.ts`: it fails if another project's design leaks in.
 
-## Not here yet
+## Infra decisions
 
-The agent rules file with the CI checks arrives in a later ticket. ADRs 0002 to 0007, 0009 and 0011
-describe the rules that infra meets.
+ADRs 0002 to 0007, 0009 and 0011 describe the rules that infra meets.
