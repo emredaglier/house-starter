@@ -14,7 +14,8 @@ them.
 - **UptimeRobot**, checking `/`, one content page and one static chunk.
 - Deploy smoke checks and rollback alerts (ADR-0005).
 - Motion pieces report silent failures through one shared event (`reportMotionFault` in
-  `packages/motion`), which the Sentry integration listens for.
+  `packages/motion`), which the web app listens for (`apps/web/src/lib/observability.ts`, mounted
+  once in the root layout). Its `reportFault` only logs; a project sends it to Sentry there.
 
 ## Consequences
 Adds one third party, Sentry, which a project's privacy notice must name. Deploy smoke checks,

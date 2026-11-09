@@ -7,9 +7,13 @@ Building in place on the live server causes 404s during deploys and leaves the s
 whenever a build fails.
 
 ## Decision
+- **Release tag only.** Images are built, published, uploaded to the CDN and deployed from a release
+  tag (`v1.2.3`) and from nothing else. Pull requests and `main` run lint, typecheck and Vitest
+  only. The tag must be on `main`, and the image build waits for those checks, so nothing reaches
+  the registry from a tag that fails them.
 - **CI** (GitHub Actions):
   - Lint, typecheck and Vitest.
-  - Build the `web` and `cms` images.
+  - Build the `web`, `cms` and `migrate` images.
   - Run a Playwright smoke test of every route against the built image. It fails on any console
     error or 404.
   - Push the images to GHCR.
@@ -24,5 +28,4 @@ whenever a build fails.
 
 ## Consequences
 Every release is an immutable image that can be rolled back with one command. The pipeline files are
-in `.github/workflows/` and `infra/`. Images are built, published and deployed from a release tag
-only (`v1.2.3`); pull requests and `main` run lint, typecheck and unit tests.
+in `.github/workflows/` and `infra/`. Cutting a release means tagging a commit on `main`.

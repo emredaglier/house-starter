@@ -18,8 +18,19 @@ Test behaviour where a user or caller meets it, and keep `pnpm test` near a minu
   content fails that test.
 - **Slow checks** (a `next build`, Docker) run in the smoke suite against the image the gate
   already builds, not in unit tests.
-- **Repo guards** (`packages/ui/src/fonts.test.ts`, `scripts/repo-guard.test.ts`,
-  `apps/web/src/routes.test.ts`) scan source on purpose: they enforce an ADR rule, not behaviour.
+- **Scripts** (`infra/*.sh`) are tested by running them against fakes on the `PATH` (`docker`,
+  `ssh`, `rclone`) and a stub site, never by asserting their lines. A workflow's `run` step that
+  holds logic is extracted from the parsed YAML and run the same way (`infra/media-backup.test.ts`).
+- **Repo guards** scan source or parsed config on purpose: they enforce an ADR rule that cannot be
+  run without GitHub, Docker or a browser, not behaviour. A guard on a workflow or Compose file
+  reads the parsed YAML, never its literal text. They are:
+  - `packages/ui/src/fonts.test.ts`, `scripts/repo-guard.test.ts` (ADR-0001) and
+    `apps/web/src/routes.test.ts`;
+  - `infra/workflows.test.ts` (ADR-0005: delivery only from a release tag, after `check`, with
+    least privilege and skipping gates; ADR-0009: the media backup only copies);
+  - `infra/docs.test.ts` (ADR-0005 and ADR-0001: every secret a workflow reads, every key of
+    `project.env` is documented, and no script hard-codes a server folder);
+  - `infra/compose.test.ts` (ADR-0010: `migrate` and `cms` revalidate the same web instances).
 
 ## Smoke specs
 
