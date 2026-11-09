@@ -4,5 +4,7 @@
     "types": ["node"],
     "allowImportingTsExtensions": true
   },
-  "include": ["scripts", "vitest.config.ts"]
+  "include": ["scripts", "infra", "smoke", "vitest.config.ts"],
+  // Built into the migrate image, where ./src is the cms-config package (see the Dockerfile).
+  "exclude": ["infra/migrate"]
 }
