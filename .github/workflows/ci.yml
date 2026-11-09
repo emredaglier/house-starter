@@ -5,12 +5,13 @@
 # Two paths:
 #  - Pull requests and pushes to main run `check` (lint, the asset-weight budget, types, unit tests)
 #    and `browser` (the web image built for this commit and the browser checks of the smoke gate:
-#    route sweep, accessibility, secrets in the bundle, WebGL fallback; ADR-0012). Nothing is
-#    published from them.
+#    route sweep, accessibility, secrets in the bundle, WebGL fallback, and the self-tests of those
+#    checks; ADR-0012). Nothing is published from them.
 #  - A release tag (v1.2.3) runs the whole delivery: `check`, then `build` (images, then the smoke
-#    test on the same runner), then `upload`, `push` and `deploy`. Nothing is built into an image,
-#    published, uploaded to the CDN or deployed from anywhere but a release tag. HQ cuts the tag
-#    after the owner's launch approval; the repo restricts who may create `v*` tags.
+#    test on the same runner, without the self-tests of the checks), then `upload`, `push` and
+#    `deploy`. Nothing is built into an image, published, uploaded to the CDN or deployed from
+#    anywhere but a release tag. HQ cuts the tag after the owner's launch approval; the repo
+#    restricts who may create `v*` tags.
 #
 # Shape: `build` needs `check`, so no image reaches GHCR from a tag that failed lint, types or unit
 # tests, or that is not on main (`check` verifies that first). The cost is a longer release run:
@@ -22,8 +23,11 @@
 # pull or retag exactly those digests.
 name: ci
 
-# A change only under docs/ or .scratch/ starts no run on a branch (neither is in an image;
-# Prettier ignores both). GitHub does not apply `paths` to a tag push.
+# `check` and `browser` are required checks on main (infra/README.md, "Setup"). A required check
+# that never starts stays pending and blocks the merge for ever, so a pull request always runs both:
+# no `paths` filter on it, a docs-only change included. A push to main has no required check; a
+# change there only under docs/ or .scratch/ (in no image; Prettier ignores both) starts no run.
+# GitHub does not apply `paths` to a tag push.
 on:
   push:
     branches: [main]
@@ -33,10 +37,6 @@ on:
       - '!docs/**'
       - '!.scratch/**'
   pull_request:
-    paths:
-      - '**'
-      - '!docs/**'
-      - '!.scratch/**'
 
 permissions:
   contents: read
@@ -87,7 +87,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v4
-      - uses: actions/cache@v6
+      # Every pull request reads the layer cache; only main writes it. The key is per commit, so a
+      # cache saved by each pull request would be a new entry per push, and the repository's cache
+      # allowance would evict the entries main saved.
+      - uses: actions/cache/restore@v6
         with:
           path: ${{ runner.temp }}/buildx-cache
           key: buildx-${{ github.sha }}
@@ -98,6 +101,11 @@ jobs:
           CI_BUILD_CACHE_DIR: ${{ runner.temp }}/buildx-cache
           CI_TARGETS: web
         run: infra/ci.sh build "$RELEASE"
+      - uses: actions/cache/save@v6
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          path: ${{ runner.temp }}/buildx-cache
+          key: buildx-${{ github.sha }}
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v5
         with:
