@@ -11,7 +11,9 @@
 // Needs Docker and a Playwright Chromium (`pnpm exec playwright install chromium`). CI runs it on
 // the image it just built (infra/ci.sh smoke); on a laptop it builds the image itself.
 //
-// Extra arguments go to `playwright test`, e.g. `pnpm smoke -g "no /admin"`.
+// Extra arguments go to `playwright test`, e.g. `pnpm smoke -g "no /admin"`. infra/ci.sh smoke
+// passes `--grep-invert "check self-test"` for a release tag, which leaves out
+// smoke/checks.selftest.spec.ts.
 // Environment:
 //   SMOKE_WEB_IMAGE     use this already built image instead of building one. Then also set
 //                       SMOKE_ASSET_PREFIX to the prefix it was built with (empty if none).
