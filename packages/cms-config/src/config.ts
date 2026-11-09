@@ -37,6 +37,16 @@ export type SiteConfigOptions = {
   revalidate?: RevalidateOptions
 }
 
+/** A copy of a `hooks` object with its own array for every hook, so a build never shares one. */
+function copyHooks<T extends Record<string, unknown> | undefined>(hooks: T): NonNullable<T> {
+  return Object.fromEntries(
+    Object.entries(hooks ?? {}).map(([name, list]) => [
+      name,
+      Array.isArray(list) ? [...list] : list,
+    ]),
+  ) as NonNullable<T>
+}
+
 /** Nothing here sends mail; password reset goes through the admin. Declared to silence the boot warning. */
 const emailAdapter: PayloadEmailAdapter = ({ payload }) => ({
   name: 'console',
@@ -64,14 +74,26 @@ export function buildSiteConfig(options: SiteConfigOptions): Promise<SanitizedCo
       },
       ...(options.adminBaseDir ? { importMap: { baseDir: options.adminBaseDir } } : {}),
     },
-    collections: [Users],
-    // Every global tells the public site to drop its cached read when it is saved. Payload mutates
-    // the objects it is given, so each build gets its own copy.
-    globals: [Site].map((global) => ({
-      ...global,
-      fields: [...global.fields],
-      hooks: { ...global.hooks, afterChange: [revalidateGlobalHook(options.revalidate)] },
+    // Payload mutates the `fields` and `hooks` arrays of the objects it is given (it adds `_order`
+    // and its own hooks), so every build gets its own copies (CODING_STANDARDS.md).
+    collections: [Users].map((collection) => ({
+      ...collection,
+      fields: [...collection.fields],
+      hooks: copyHooks(collection.hooks),
     })),
+    // Every global tells the public site to drop its cached read when it is saved. The hook is
+    // appended to the global's own `afterChange` hooks, never replacing them.
+    globals: [Site].map((global) => {
+      const hooks = copyHooks(global.hooks)
+      return {
+        ...global,
+        fields: [...global.fields],
+        hooks: {
+          ...hooks,
+          afterChange: [...(hooks.afterChange ?? []), revalidateGlobalHook(options.revalidate)],
+        },
+      }
+    }),
     editor: lexicalEditor(),
     db: buildDatabase({
       databasePath: options.databasePath,
