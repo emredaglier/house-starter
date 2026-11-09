@@ -9,7 +9,9 @@ Test behaviour where a user or caller meets it, and keep `pnpm test` near a minu
 
 - **Look, layout and motion** (visibility, z-order, blur, animation state) get no automated test.
   The owner checks them on web and mobile before pushing. ESLint rejects a unit test that names a
-  `.css` file.
+  `.css` file. The exceptions are content visibility when an effect is off (the WebGL fallback
+  check) and page structure (the route sweep and accessibility checks): they read what is on the
+  page, not how it looks or moves.
 - **Pure maths** (layouts, easings, curves) is asserted by properties (symmetry, monotonic,
   matches a brute-force sample, clamps) plus a few worked examples. A restated constant fails on
   every deliberate retune.
@@ -31,7 +33,7 @@ Test behaviour where a user or caller meets it, and keep `pnpm test` near a minu
   - `infra/docs.test.ts` (ADR-0005 and ADR-0001: every secret a workflow reads, every key of
     `project.env` is documented, and no script hard-codes a server folder);
   - `infra/compose.test.ts` (ADR-0010: `migrate` and `cms` revalidate the same web instances);
-  - `scripts/public-env.test.ts` (ADR-0012: no secret under `NEXT_PUBLIC_`, no server variable read
+  - `scripts/public-env.test.ts` (logic in `scripts/public-env.ts`; ADR-0012: no secret under `NEXT_PUBLIC_`, no server variable read
     in a client component).
 
 ## Smoke specs
