@@ -7,6 +7,7 @@
     "lint": "node scripts/check-effects.mjs && eslint . && prettier --check .",
     "lint:fix": "eslint . --fix && prettier --write .",
     "format": "prettier --write .",
+    "check:assets": "node scripts/check-assets.ts",
     "typecheck": "tsc --noEmit && pnpm -r --parallel typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
