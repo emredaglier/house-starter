@@ -11,6 +11,8 @@ overrides:
   source-map-js: '>=1.2.2'
   '@tailwindcss/typography>postcss-selector-parser': '>=7.1.6'
   '@esbuild-kit/core-utils>esbuild': '>=0.25.0'
+  happy-dom: '>=21.0.4'
+  minimatch@>=7 <11.0.1: '>=11.0.1'
 
 allowBuilds:
   esbuild: true
