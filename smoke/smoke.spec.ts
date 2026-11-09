@@ -12,6 +12,7 @@ import { PLACEHOLDER_SITE } from '../packages/cms-config/src/seed/placeholder.ts
 import { LIVE_EDIT, UNKNOWN_PATH } from './fixture-data.ts'
 import { expect, revalidateSecret, test } from './fixtures.ts'
 import { publicRoutes } from './routes.ts'
+import { sweepProblems } from './sweep.ts'
 
 /**
  * Every public route of the site, found from its pages (smoke/routes.ts), `/examples/glow` (noindex
@@ -52,9 +53,7 @@ const setCookies = (response: APIResponse) =>
 test.describe('public routes', () => {
   for (const route of PUBLIC_ROUTES) {
     test(`${route} loads with its content and no error`, async ({ page, visit }) => {
-      const failures = await visit(route)
-      await expect(page.locator('main#main h1')).toBeVisible()
-      expect(failures).toEqual([])
+      expect(await sweepProblems(page, visit, route)).toEqual([])
     })
   }
 
