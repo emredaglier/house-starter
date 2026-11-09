@@ -22,7 +22,7 @@ const isBinary = (file: string) => /\.(png|jpe?g|webp|avif|gif|ico|woff2?|ttf|ot
 type Rule = { kind: string; pattern: RegExp }
 
 export const BANNED: Rule[] = [
-  { kind: 'identity', pattern: /daglier/i },
+  { kind: 'identity', pattern: /\bdaglier/i },
   { kind: 'identity', pattern: /\bemre\b/i },
   { kind: 'font', pattern: /cooper/i },
   { kind: 'font', pattern: /geist/i },
@@ -121,6 +121,8 @@ describe('findBanned', () => {
       'a.ts:1: font "Cooper"',
     ])
     expect(findBanned('a.ts', 'createMeltStage(canvas)')).toEqual(['a.ts:1: effect "Melt"'])
+    // A machine path that merely contains the owner's user name is not a leftover.
+    expect(findBanned('a.md', '/Users/emredaglier/Documents')).toEqual([])
     expect(findBanned('a.md', 'daglier.com, a photography portfolio of albums')).toEqual([
       'a.md:1: identity "daglier"',
       'a.md:1: copy "photograph"',
