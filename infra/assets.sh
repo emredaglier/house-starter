@@ -30,7 +30,7 @@ case "${1:-}" in
   upload)
     image="${2:-}" release="${3:-}"
     [ -n "$image" ] && [ -n "$release" ] || die "usage: assets.sh upload <web-image> <release>"
-    tmp="$(mktemp -d)"
+    tmp="$(mktemp -d "${TMPDIR:-/tmp}/assets.XXXXXX")"
     ctr=""
     cleanup() { [ -z "$ctr" ] || docker rm -f "$ctr" >/dev/null 2>&1 || true; rm -rf "$tmp"; }
     trap cleanup EXIT

@@ -10,7 +10,12 @@ let site: Awaited<ReturnType<typeof startSiteStub>>
 const smoke = (env: Record<string, string> = {}) =>
   new Promise<{ code: number | null; out: string }>((resolve) => {
     const child = spawn('bash', [script, site.base], {
-      env: { PATH: process.env.PATH ?? '', SMOKE_HOME_WAIT: '2', ...env },
+      env: {
+        PATH: process.env.PATH ?? '',
+        TMPDIR: process.env.TMPDIR ?? '',
+        SMOKE_HOME_WAIT: '2',
+        ...env,
+      },
     })
     let out = ''
     child.stdout.on('data', (d: Buffer) => (out += d))

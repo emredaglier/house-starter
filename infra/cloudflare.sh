@@ -60,7 +60,7 @@ done
 command -v curl >/dev/null || die "curl is required"
 command -v jq >/dev/null || die "jq is required"
 
-BODY_FILE="$(mktemp)"
+BODY_FILE="$(mktemp "${TMPDIR:-/tmp}/cloudflare.XXXXXX")"
 ZONE="/zones/$CLOUDFLARE_ZONE_ID"
 ACCOUNT="/accounts/$CLOUDFLARE_ACCOUNT_ID"
 

@@ -55,6 +55,7 @@ const run = (args: string[], env: Record<string, string> = {}, from = script) =>
     const child = spawn('bash', [from, ...args], {
       env: {
         PATH: `${dir}/bin:${process.env.PATH ?? ''}`,
+        TMPDIR: process.env.TMPDIR ?? '',
         FAKE_DIR: dir,
         FAKE_STUB: site.base,
         STATE_DIR: `${dir}/state`,
