@@ -24,7 +24,7 @@ base="${base%/}"
 home_wait="${SMOKE_HOME_WAIT:-60}"
 timeout="${SMOKE_TIMEOUT:-10}"
 
-tmp="$(mktemp -d)"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/smoke.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 
 log() { printf 'smoke: %s\n' "$*"; }

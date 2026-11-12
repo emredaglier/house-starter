@@ -248,7 +248,7 @@ case "$cmd" in
     : "${DEPLOY_HOST:?}" "${DEPLOY_USER:?}" "${DEPLOY_SSH_KEY:?}" "${DEPLOY_HOST_KEY:?}"
     : "${R2_ACCOUNT_ID:?}" "${R2_MEDIA_WRITE_KEY_ID:?}" "${R2_MEDIA_WRITE_SECRET:?}"
     dir="${DEPLOY_DIR:-$APP_DIR/infra}"
-    tmp="$(mktemp -d)"
+    tmp="$(mktemp -d "${TMPDIR:-/tmp}/ci.XXXXXX")"
     trap 'rm -rf "$tmp"' EXIT
     umask 077
     printf '%s\n' "$DEPLOY_SSH_KEY" >"$tmp/key"

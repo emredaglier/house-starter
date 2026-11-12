@@ -12,6 +12,7 @@ const run = (args: string[], env: Record<string, string> = {}) =>
     const child = spawn('bash', [script, ...args], {
       env: {
         PATH: process.env.PATH ?? '',
+        TMPDIR: process.env.TMPDIR ?? '',
         CLOUDFLARE_API_BASE: mock.base,
         CLOUDFLARE_API_TOKEN: TOKEN,
         CLOUDFLARE_ZONE_ID: ZONE,

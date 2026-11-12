@@ -23,6 +23,10 @@ Test behaviour where a user or caller meets it, and keep `pnpm test` near a minu
 - **Scripts** (`infra/*.sh`) are tested by running them against fakes on the `PATH` (`docker`,
   `ssh`, `rclone`) and a stub site, never by asserting their lines. A workflow's `run` step that
   holds logic is extracted from the parsed YAML and run the same way (`infra/media-backup.test.ts`).
+- **Local sockets**: the infra suites that start a stub server (`infra/local-sockets.ts` lists them)
+  are skipped with a printed notice where the machine refuses local sockets, such as an agent's
+  sandbox. With `CI=true` that is an error, never a skip. A script makes temp files under
+  `${TMPDIR:-/tmp}`, because macOS `mktemp` ignores `TMPDIR` without a template.
 - **Repo guards** scan source or parsed config on purpose: they enforce an ADR rule that cannot be
   run without GitHub, Docker or a browser, not behaviour. A guard on a workflow or Compose file
   reads the parsed YAML, never its literal text. They are:

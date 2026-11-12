@@ -22,6 +22,7 @@ const run = (args: string[]) =>
     const child = spawn('bash', [script, ...args], {
       env: {
         PATH: process.env.PATH ?? '',
+        TMPDIR: process.env.TMPDIR ?? '',
         S3_ENDPOINT: stub.endpoint,
         S3_BUCKET: 'bucket',
         S3_ACCESS_KEY_ID: 'k',

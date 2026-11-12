@@ -12,6 +12,7 @@ function ci(args: string[], env: Record<string, string> = {}) {
     encoding: 'utf8',
     env: {
       PATH: process.env.PATH ?? '',
+      TMPDIR: process.env.TMPDIR ?? '',
       HOME: process.env.HOME ?? '',
       // Names come from infra/project.env; the environment wins over the file.
       PROJECT_NAME: 'atlas',
@@ -147,6 +148,7 @@ describe('verify-release: a release is cut from main only', () => {
       encoding: 'utf8',
       env: {
         PATH: process.env.PATH ?? '',
+        TMPDIR: process.env.TMPDIR ?? '',
         HOME: process.env.HOME ?? '',
         PROJECT_NAME: 'atlas',
         DOMAIN: 'atlas.studio',
@@ -214,7 +216,7 @@ fi
     { mode: 0o755 },
   )
   return {
-    env: { PATH: `${dir}:${process.env.PATH ?? ''}` },
+    env: { PATH: `${dir}:${process.env.PATH ?? ''}`, TMPDIR: process.env.TMPDIR ?? '' },
     calls: () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n') : []),
     done: () => fs.rmSync(dir, { recursive: true, force: true }),
   }
@@ -343,6 +345,7 @@ esac`,
     return {
       env: {
         PATH: `${dir}:${process.env.PATH ?? ''}`,
+        TMPDIR: process.env.TMPDIR ?? '',
         ASSETS_CMD: path.join(dir, 'assets'),
         CI_PLATFORM: 'linux/arm64',
       },
