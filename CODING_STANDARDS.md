@@ -9,7 +9,9 @@ Test behaviour where a user or caller meets it, and keep `pnpm test` near a minu
 
 - **Look, layout and motion** (visibility, z-order, blur, animation state) get no automated test.
   The owner checks them on web and mobile before pushing. ESLint rejects a unit test that names a
-  `.css` file.
+  `.css` file. The exceptions are content visibility when an effect is off (the WebGL fallback
+  check) and page structure (the route sweep and accessibility checks): they read what is on the
+  page, not how it looks or moves.
 - **Pure maths** (layouts, easings, curves) is asserted by properties (symmetry, monotonic,
   matches a brute-force sample, clamps) plus a few worked examples. A restated constant fails on
   every deliberate retune.
@@ -18,16 +20,37 @@ Test behaviour where a user or caller meets it, and keep `pnpm test` near a minu
   content fails that test.
 - **Slow checks** (a `next build`, Docker) run in the smoke suite against the image the gate
   already builds, not in unit tests.
-- **Repo guards** (`packages/ui/src/fonts.test.ts`, `scripts/repo-guard.test.ts`,
-  `apps/web/src/routes.test.ts`) scan source on purpose: they enforce an ADR rule, not behaviour.
+- **Scripts** (`infra/*.sh`) are tested by running them against fakes on the `PATH` (`docker`,
+  `ssh`, `rclone`) and a stub site, never by asserting their lines. A workflow's `run` step that
+  holds logic is extracted from the parsed YAML and run the same way (`infra/media-backup.test.ts`).
+- **Repo guards** scan source or parsed config on purpose: they enforce an ADR rule that cannot be
+  run without GitHub, Docker or a browser, not behaviour. A guard on a workflow or Compose file
+  reads the parsed YAML, never its literal text. They are:
+  - `packages/ui/src/fonts.test.ts`, `scripts/repo-guard.test.ts` (ADR-0001) and
+    `apps/web/src/routes.test.ts`;
+  - `infra/workflows.test.ts` (ADR-0005: delivery only from a release tag, after `check`, with
+    least privilege and skipping gates; ADR-0009: the media backup only copies);
+  - `infra/docs.test.ts` (ADR-0005 and ADR-0001: every secret a workflow reads, every key of
+    `project.env` is documented, and no script hard-codes a server folder);
+  - `infra/compose.test.ts` (ADR-0010: `migrate` and `cms` revalidate the same web instances);
+  - `scripts/public-env.test.ts` (logic in `scripts/public-env.ts`; ADR-0012: no secret under `NEXT_PUBLIC_`, no server variable read
+    in a client component).
 
 ## Smoke specs
 
-The release gate blocks deploys, so it stays small: every public route loads with its content and
-no console error or 404, redirects and not-found pages work, and assets come from the CDN prefix.
-It also holds the request-level checks that need the built image: server HTML and metadata, no
-admin or API routes, the revalidate secret, no cookies, and one live CMS edit reaching the cached
-pages. It runs on desktop Chromium only. Do not add specs for look, motion or interaction.
+The gate runs on every pull request, main and release tag (ADR-0012), so it stays small and
+deterministic: every public route loads with its content and no console error or 404, redirects and
+not-found pages work, and assets come from the CDN prefix. It also holds the request-level checks
+that need the built image (server HTML and metadata, no admin or API routes, the revalidate secret,
+no cookies, one live CMS edit reaching the cached pages) and the Satus-derived checks: axe
+accessibility on every route, a secrets-in-the-bundle scan, and the WebGL DOM-fallback check on each
+effect page. It runs on desktop Chromium only. Do not add specs for look, motion or interaction.
+
+- A check's decision logic is a pure module with a unit test on broken inputs (`smoke/secrets-scan.ts`,
+  `smoke/routes.ts`, `scripts/assets-budget.ts`); the browser part is proven on a deliberately
+  broken page in `smoke/checks.selftest.spec.ts`. A new check gets both.
+- A check never waits for a GPU or a timer: it takes WebGL away or breaks the shaders and looks at
+  what is left. A spec that needs the real GPU is not a gate spec.
 
 ## Database and Payload
 

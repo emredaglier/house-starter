@@ -10,13 +10,14 @@ follow.
 
 ## Decision
 - One repo, pnpm workspaces: `apps/web`, `apps/cms`, `packages/cms-config`, `packages/motion`,
-  `packages/ui`, and later `infra/`. No Turborepo. `infra/` does not exist in the starter yet: it
-  arrives with ticket 02.
+  `packages/ui`. No Turborepo. Three top-level folders are not workspace packages: `infra/` (the
+  deploy scripts and per-project settings), `smoke/` (the release gate, run against the built
+  image) and `perf/` (the local frame-time suite).
 - `packages/ui` starts as an empty shell: no tokens, fonts, colours or components. Each project
   fills it with its own design. `packages/motion` starts with plumbing only; the effects library
   starts empty and grows as projects finish.
 - Stack: Next.js 16, React 19, Payload 3, TypeScript strict, Tailwind v4, Vitest, ESLint plus the
-  `check-effects` script. Motion projects add GSAP and raw WebGL2.
+  `check-effects` script. `packages/motion` depends on GSAP (the ticker) and draws its effects with raw WebGL2.
 - Fonts use `next/font`, defined only in `packages/ui/fonts.ts`. A repo test fails if they are
   defined anywhere else.
 - Node and pnpm are pinned (`.node-version`, `engines`, `packageManager`), and pnpm's minimum

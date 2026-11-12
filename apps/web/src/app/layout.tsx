@@ -4,6 +4,7 @@ import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 
 import './globals.css'
+import { MotionFaultReporter } from './MotionFaultReporter'
 
 export const metadata: Metadata = { title: 'Project name' }
 
@@ -15,7 +16,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: HEAD_SCRIPT }} />
       </head>
-      <body>{children}</body>
+      <body>
+        <MotionFaultReporter />
+        {children}
+      </body>
     </html>
   )
 }
