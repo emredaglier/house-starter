@@ -26,6 +26,14 @@ pnpm dev       # web on http://localhost:3000
 pnpm --filter @house/cms dev   # the admin on http://localhost:3001/admin
 ```
 
+To serve a production build of the web app instead:
+
+```sh
+pnpm build
+pnpm start                                  # next start on http://localhost:3000
+pnpm start --port 4400 --hostname 127.0.0.1   # flags pass through to next start
+```
+
 ## Layout
 
 | Path                  | Role                                                                               |

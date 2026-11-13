@@ -52,7 +52,7 @@ attempt showed and what you think is wrong, and ask for help. Do not try a third
 ## Memory-heavy commands
 
 Subagents and workers (e.g. under `/implement-spec`) must not start Next.js processes: no `next dev`,
-`next build`, `pnpm dev`, `pnpm build`, and no Playwright or browser runs (`pnpm smoke`, `pnpm perf`).
+`next build`, `next start`, `pnpm dev`, `pnpm build`, `pnpm start`, and no Playwright or browser runs (`pnpm smoke`, `pnpm perf`).
 Parallel Next processes have crashed the dev machine. Workers verify with lint, typecheck and unit
 tests only. Only the lead session runs `next build`, `next dev` and the browser suites, once, after
 the workers have finished.
