@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "build": "pnpm -r --workspace-concurrency=1 build",
     "dev": "pnpm --filter @house/web dev",
+    "start": "pnpm --filter @house/web start",
     "perf": "node perf/run.ts",
     "perf:check": "node perf/check.ts",
     "migrate": "pnpm --filter @house/cms migrate",
