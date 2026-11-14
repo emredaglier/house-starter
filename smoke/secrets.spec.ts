@@ -3,12 +3,13 @@
 // page, its flight data (a server value handed to a client component lands there), every script and
 // stylesheet reachable from them and every one the image holds (smoke/run.ts lists them, because a
 // lazily loaded chunk has no link in any page), and fails on a secret's value or on text shaped like a
-// credential. The crawl is smoke/secrets-scan.ts `collectServed`, with its own unit tests.
+// credential, and on the `?debug` panel, which a production build must not contain. The crawl is smoke/secrets-scan.ts `collectServed`, with its own unit tests.
 //
 // Adapted from darkroom.engineering's Satus (e2e/secrets-in-bundle.e2e.ts, MIT; see
 // THIRD-PARTY-NOTICES.md).
 import fs from 'node:fs'
 
+import { debugPanelFiles } from './debug-panel-scan.ts'
 import { UNKNOWN_PATH } from './fixture-data.ts'
 import { expect, test } from './fixtures.ts'
 import { publicRoutes } from './routes.ts'
@@ -52,4 +53,6 @@ test('no server secret reaches anything the browser is served', async ({ request
     contentType: 'application/json',
   })
   expect(findLeaks(files, secrets)).toEqual([])
+  // The same files must not hold the `?debug` panel (ticket 28b: absent from production builds).
+  expect(debugPanelFiles(files)).toEqual([])
 })
