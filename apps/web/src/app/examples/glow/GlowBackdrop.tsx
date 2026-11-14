@@ -1,5 +1,6 @@
 'use client'
 
+import { registerTuning } from '@house/motion'
 import { mountGlow, type GlowMount } from '@house/motion/glow'
 import { useIdle, useReducedMotion } from '@house/motion/react'
 import { useEffect, useRef, type ReactNode } from 'react'
@@ -22,7 +23,22 @@ export function GlowBackdrop({ children, className }: { children: ReactNode; cla
     const glow = mountGlow(host, { reducedMotion, canvasAttributes: { 'data-perf': 'glow' } })
     glow.setActive(!idleRef.current)
     glowRef.current = glow
+    // The `?debug` panel tunes the glow colour: --glow-color on the host, which the canvas inherits.
+    const unregister = registerTuning(
+      'glow',
+      {
+        color: {
+          kind: 'color',
+          value: getComputedStyle(host).getPropertyValue('--glow-color').trim() || '#808080',
+        },
+      },
+      ({ color }) => {
+        host.style.setProperty('--glow-color', String(color))
+        glow.setColor()
+      },
+    )
     return () => {
+      unregister()
       glow.dispose()
       glowRef.current = null
     }

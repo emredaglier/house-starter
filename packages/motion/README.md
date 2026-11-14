@@ -43,12 +43,23 @@ each follows the contract below.
   `smoothToward` is frame-rate independent and snaps onto the target, so a loop can tell when it
   has settled.
 
+- `registerTuning(name, controls, onChange?)` -> unregister: an animated piece lists its tunable
+  values for the `?debug` panel, e.g. `{ ease: { kind: 'ease', value: 'power2.out' }, duration:
+{ kind: 'time', value: 0.6 } }` (kinds: `ease`, `time` in seconds, `color`, `spacing`). `onChange`
+  gets every current value after each edit; call the unregister function in the effect's cleanup.
+  `setTuningValue`, `getTunings`, `subscribeTuning` and `tuningPayload()` (`{ pieces: { [name]: values } }`,
+  what Save posts) are for the panel. The panel is `apps/web/src/app/DebugPanel.tsx`: it shows only
+  with `?debug` in the URL and only outside a production build, and Save posts to
+  `NEXT_PUBLIC_HQ_TUNING_URL` (unset: Save is disabled). `smoke/secrets.spec.ts` fails if a
+  production build holds the panel. `/examples/glow` registers its colour as the example.
+
 ## `@house/motion/react`
 
 - `useIdle()`: true while the visitor is idle (shared watcher, timeouts from `configureIdle`).
 - `useTick(fn)`: runs `fn` on the safe ticker while mounted.
 - `useReducedMotion()`: `prefers-reduced-motion`, read after mount (false during SSR and
   hydration).
+- `useTunings()`: the registered tunable pieces, live (for the `?debug` panel).
 
 ## The engine contract
 

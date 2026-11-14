@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { prefersReducedMotion } from './capabilities'
 import { createIdleWatcher, idleTimeoutMs } from './idle'
 import { addTick, removeTick, type Tick } from './ticker'
+import { getTunings, subscribeTuning, type Tuning } from './tuning'
 
 let shared: ReturnType<typeof createIdleWatcher> | undefined
 
@@ -36,3 +37,7 @@ export const useReducedMotion = (): boolean => {
   }, [])
   return reduced
 }
+
+/** The registered tunable pieces, live (the `?debug` panel). Empty during SSR. */
+export const useTunings = (): readonly Tuning[] =>
+  useSyncExternalStore(subscribeTuning, getTunings, getTunings)
